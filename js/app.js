@@ -1,10 +1,15 @@
 import { Store, requestPersistence } from './storage.js';
-import { uid, clamp, debounce, downloadBlob, slug, makeCanvas } from './util.js';
+import { uid, clamp, debounce, downloadBlob, slug, makeCanvas, shade } from './util.js';
 import { PAGE_W, PAGE_H, PAPERS, COVERS, paperCanvas, paperThumb } from './papers.js';
 import {
   FONTS, INKS, NOTE_COLORS, TAPE_COLORS, FRAMES, FILTERS, CROPS, NOTE_STYLES,
-  noteStyle, renderPhoto, renderTape, renderNoteBg, distress,
+  METALS, PATCH_COLORS, STICKER_LOOKS,
+  noteStyle, renderPhoto, renderTape, renderNoteBg, distress, renderSticker,
 } from './render.js';
+import {
+  COVER_GROUPS, STITCHES, CORNERS, CLOSURES, THREAD_COLORS, CLOSURE_COLORS, COVER_PRESETS,
+  coverStyle, renderCoverUnder, renderCoverOver,
+} from './covers.js';
 import { icon, hydrateIcons } from './icons.js';
 
 const K = window.Konva;
@@ -18,6 +23,8 @@ const state = {
   tool: 'select',
   selectedId: null,
   brush: { kind: 'pen', color: '#2b2118', size: 4 },
+  stickerLook: 'plain',
+  patchColor: '#f3dc8c',
   eraser: false,
   zoom: 1,
   editing: null,
@@ -27,7 +34,7 @@ const history = { undo: [], redo: [], snap: null };
 const imageCache = new Map();
 const pending = new Set();
 
-let stage, bgLayer, itemLayer, uiLayer, tr;
+let stage, bgLayer, itemLayer, decoLayer, uiLayer, tr;
 
 const spread = () => state.book.spreads[state.idx];
 const spreadWidth = (sp = spread()) => sp.pages.length * PAGE_W;
@@ -165,10 +172,22 @@ function buildText(item, g) {
     align: item.align, width: item.width, lineHeight: 1.25, wrap: 'word',
     letterSpacing: isStamp ? 2 : 0, opacity: isStamp ? 0.82 : 1,
   });
+  if (item.style === 'foil') {
+    const c = item.color;
+    t.setAttrs({
+      fillPriority: 'linear-gradient',
+      fillLinearGradientStartPoint: { x: 0, y: 0 },
+      fillLinearGradientEndPoint: { x: 0, y: item.fontSize * 1.25 },
+      fillLinearGradientColorStops: [0, shade(c, 70), 0.45, c, 0.55, shade(c, -30), 1, shade(c, 45)],
+      shadowColor: '#000', shadowOpacity: 0.45, shadowBlur: 1.5, shadowOffsetX: 1, shadowOffsetY: 1.2,
+    });
+  } else if (item.style === 'plate') {
+    t.setAttrs({ shadowColor: '#fff6d0', shadowOpacity: 0.7, shadowBlur: 0, shadowOffsetX: 0.8, shadowOffsetY: 1 });
+  }
   let w = item.width + pl + pr;
   let h = Math.max(t.height(), item.fontSize * 1.25) + pt + pb;
   if (item.style === 'sticky') h = Math.max(h, w * 0.92);
-  if (item.style !== 'plain') {
+  if (item.style !== 'plain' && item.style !== 'foil') {
     const { canvas, m } = renderNoteBg(item, w, h, 2);
     if (isStamp) distress(canvas, item.id, 0.35);
     g.add(new K.Image({
@@ -208,6 +227,12 @@ function buildDrawing(item, g) {
 }
 
 function buildSticker(item, g) {
+  if (item.look && item.look !== 'plain') {
+    const { canvas, W, H } = renderSticker(item);
+    g.add(new K.Image({ image: canvas, width: W, height: H, ...SOFT_SHADOW }));
+    g.setAttrs({ boxW: W, boxH: H });
+    return;
+  }
   const t = new K.Text({ text: item.emoji, fontSize: item.size || 64, ...SOFT_SHADOW, fontFamily: 'Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, sans-serif' });
   g.add(t);
   g.setAttrs({ boxW: t.width(), boxH: t.height() });
@@ -219,8 +244,9 @@ function initStage() {
   stage = new K.Stage({ container: 'stage', width: 100, height: 100 });
   bgLayer = new K.Layer({ listening: false });
   itemLayer = new K.Layer();
+  decoLayer = new K.Layer({ listening: false });
   uiLayer = new K.Layer();
-  stage.add(bgLayer, itemLayer, uiLayer);
+  stage.add(bgLayer, itemLayer, decoLayer, uiLayer);
   tr = new K.Transformer({
     rotateAnchorOffset: 28,
     enabledAnchors: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
@@ -259,6 +285,8 @@ function renderSpread() {
       fillLinearGradientColorStops: [0, 'rgba(40,20,5,0)', 0.4, 'rgba(40,20,5,0.12)', 0.49, 'rgba(30,15,0,0.38)', 0.5, 'rgba(20,10,0,0.5)', 0.51, 'rgba(30,15,0,0.38)', 0.6, 'rgba(40,20,5,0.12)', 1, 'rgba(40,20,5,0)'],
     }));
   } else if (sp.cover) {
+    const cs = coverStyle(sp);
+    bgLayer.add(new K.Image({ image: renderCoverUnder(cs), width: PAGE_W, height: PAGE_H }));
     bgLayer.add(new K.Rect({
       x: 0, y: 0, width: 46, height: PAGE_H,
       fillLinearGradientStartPoint: { x: 0, y: 0 }, fillLinearGradientEndPoint: { x: 46, y: 0 },
@@ -266,6 +294,10 @@ function renderSpread() {
     }));
   }
   bgLayer.batchDraw();
+
+  decoLayer.destroyChildren();
+  if (sp.cover) decoLayer.add(new K.Image({ image: renderCoverOver(coverStyle(sp)), width: PAGE_W, height: PAGE_H }));
+  decoLayer.batchDraw();
 
   itemLayer.destroyChildren();
   sp.items.forEach((it) => itemLayer.add(buildNode(it)));
@@ -609,6 +641,9 @@ function addText(style) {
     label: { font: 'Special Elite', fontSize: 22, width: 240, text: 'SUMMER · 2026', align: 'center' },
     ticket: { font: 'Special Elite', fontSize: 22, width: 200, text: 'ADMIT ONE\nthe best day', align: 'center' },
     stamp: { font: 'Special Elite', fontSize: 30, width: 200, text: 'Memories', align: 'center', color: '#9e2a2b' },
+    bookplate: { font: 'IM Fell English', fontSize: 34, width: 300, text: state.book.title || 'My Scrapbook', align: 'center', color: '#3b2a1e' },
+    plate: { font: 'Playfair Display', fontSize: 28, width: 280, text: state.book.title || 'My Scrapbook', align: 'center', color: '#3a2a14' },
+    foil: { font: 'Playfair Display', fontSize: 44, width: 500, text: state.book.title || 'My Scrapbook', align: 'center', color: '#c9a24a' },
   };
   const p = presets[style] || presets.plain;
   const [pt, pr, pb, pl] = st.pad;
@@ -621,7 +656,8 @@ const STAMP_WORDS = ['Memories', 'Adventure', 'Hello!', 'xoxo', 'Best day ever',
 
 function addSticker(emoji) {
   const size = 72;
-  addItem({ id: uid(), type: 'sticker', emoji, size, ...placement(size, size, 120) });
+  const look = state.stickerLook;
+  addItem({ id: uid(), type: 'sticker', emoji, size, look, patchColor: state.patchColor, ...placement(size * 1.9, size * 1.9, 120) });
 }
 
 function addTape() {
@@ -819,10 +855,10 @@ function setTool(tool) {
 
 // ------------------------------------------------------------------ popovers
 
-function openPopover(kind) {
+function openPopover(kind, refresh = false) {
   const pop = $('#popover');
   const btn = document.querySelector(`.tool[data-tool="${kind}"]`);
-  if (!pop.hidden && pop.dataset.kind === kind) { closePopover(); return; }
+  if (!refresh && !pop.hidden && pop.dataset.kind === kind) { closePopover(); return; }
   pop.dataset.kind = kind;
   pop.innerHTML = '';
   if (kind === 'text') {
@@ -838,6 +874,11 @@ function openPopover(kind) {
     });
     pop.appendChild(grid);
   } else if (kind === 'sticker') {
+    pop.insertAdjacentHTML('beforeend', '<h3>Sticker look</h3>');
+    pop.appendChild(chips(STICKER_LOOKS, state.stickerLook, (l) => { state.stickerLook = l; openPopover('sticker', true); }));
+    if (state.stickerLook === 'patch' || state.stickerLook === 'heart') {
+      pop.appendChild(swatches(PATCH_COLORS, state.patchColor, (c) => { state.patchColor = c; openPopover('sticker', true); }, 'small'));
+    }
     pop.insertAdjacentHTML('beforeend', '<h3>Stickers</h3>');
     const grid = document.createElement('div');
     grid.className = 'sticker-grid';
@@ -1011,13 +1052,20 @@ function renderPanel() {
         oninput: (e) => updateSelected({ text: e.target.value || ' ' }, { commitNow: false }),
         onchange: () => commit(),
       }, it.text)),
-      section('Style', chips(NOTE_STYLES, it.style, (s) => updateSelected({ style: s, bg: null }, { panel: true }))),
+      section('Style', chips(NOTE_STYLES, it.style, (s) => {
+        const patch = { style: s, bg: null };
+        if (s === 'foil' && !METALS.includes(it.color)) patch.color = METALS[0];
+        if (s !== 'foil' && METALS.includes(it.color) && it.color !== '#fdf9ef') patch.color = '#2b2118';
+        updateSelected(patch, { panel: true });
+      })),
       section('Font', fontSelect(it.font, (f) => updateSelected({ font: f }, { panel: true }))),
       range('Size', 12, 96, 1, it.fontSize, (v, done) => updateSelected({ fontSize: v }, { commitNow: done })),
       range('Width', 60, 560, 5, Math.round(it.width), (v, done) => updateSelected({ width: v }, { commitNow: done })),
       section('Align', el('div', { class: 'acts' }, ['left', 'center', 'right'].map((a) =>
         el('button', { class: 'act' + (it.align === a ? ' on' : ''), 'aria-label': 'Align ' + a, html: icon(a), onclick: () => updateSelected({ align: a }, { panel: true }) })))),
-      section('Ink', swatches(INKS, it.color, (c) => updateSelected({ color: c }, { panel: true }))));
+      it.style === 'foil'
+        ? section('Metal', swatches(METALS, it.color, (c) => updateSelected({ color: c }, { panel: true })))
+        : section('Ink', swatches(INKS, it.color, (c) => updateSelected({ color: c }, { panel: true }))));
     if (st.bg) panel.append(section('Paper colour', swatches(NOTE_COLORS, it.bg || st.bg, (c) => updateSelected({ bg: c }, { panel: true }))));
     panel.append(actionRow());
     return;
@@ -1041,7 +1089,13 @@ function renderPanel() {
     return;
   }
 
-  panel.append(panelHeader('Sticker'), actionRow());
+  const look = it.look || 'plain';
+  panel.append(panelHeader('Sticker'),
+    section('Look', chips(STICKER_LOOKS, look, (l) => updateSelected({ look: l, patchColor: it.patchColor || state.patchColor }, { panel: true }))));
+  if (look === 'patch' || look === 'heart') {
+    panel.append(section('Patch colour', swatches(PATCH_COLORS, it.patchColor, (c) => updateSelected({ patchColor: c }, { panel: true }))));
+  }
+  panel.append(actionRow());
 }
 
 function paperPicker(list, current, onPick) {
@@ -1058,11 +1112,61 @@ function setPaper(i, id) {
   renderPanel();
 }
 
+function setCoverStyle(patch) {
+  const sp = spread();
+  sp.coverStyle = { ...coverStyle(sp), ...patch };
+  renderSpread();
+  commit();
+  renderPanel();
+}
+
+function renderCoverPanel(panel, sp) {
+  const cs = coverStyle(sp);
+  const open = state.coverTab || 'look';
+  const tabs = el('div', { class: 'tabs', role: 'tablist' }, [['look', 'Material'], ['details', 'Details'], ['title', 'Title & patches']].map(([id, name]) =>
+    el('button', { class: 'tab' + (open === id ? ' on' : ''), role: 'tab', 'aria-selected': String(open === id), onclick: () => { state.coverTab = id; renderPanel(); } }, name)));
+  panel.append(tabs);
+
+  if (open === 'look') {
+    panel.append(section('Quick looks', el('div', { class: 'chips' }, COVER_PRESETS.map((p) =>
+      el('button', { class: 'chip', onclick: () => { sp.pages[0] = p.material; setCoverStyle({ ...p.style }); } }, p.name)))));
+    COVER_GROUPS.forEach((grp) => panel.append(section(grp,
+      paperPicker(COVERS.filter((c) => c.group === grp), sp.pages[0], (id) => {
+        sp.pages[0] = id;
+        // let the stitching follow the new material unless it was picked by hand
+        if (sp.coverStyle && !sp.coverStyle.stitchPicked) delete sp.coverStyle.stitchColor;
+        renderSpread(); commit(); renderPanel();
+      }))));
+  } else if (open === 'details') {
+    panel.append(...[
+      section('Stitching', chips(STITCHES, cs.stitch, (v) => setCoverStyle({ stitch: v }))),
+      cs.stitch !== 'none' ? section('Thread colour', swatches(THREAD_COLORS, cs.stitchColor, (c) => setCoverStyle({ stitchColor: c, stitchPicked: true }))) : null,
+      section('Spine band', el('div', { class: 'spines' },
+        el('button', { class: 'spine-none' + (cs.spine === 'none' ? ' on' : ''), onclick: () => setCoverStyle({ spine: 'none' }) }, 'None'),
+        COVERS.map((c) => el('button', {
+          class: 'spine' + (cs.spine === c.id ? ' on' : ''), title: c.name, 'aria-label': c.name,
+          style: `background-image:url(${paperThumb(c.id)})`, onclick: () => setCoverStyle({ spine: c.id }),
+        })))),
+      section('Corners', chips(CORNERS, cs.corners, (v) => setCoverStyle({ corners: v }))),
+      section('Closure', chips(CLOSURES, cs.closure, (v) => setCoverStyle({ closure: v }))),
+      cs.closure !== 'none' ? section(cs.closure === 'twine' ? 'Button colour' : 'Closure colour', swatches(CLOSURE_COLORS, cs.closureColor, (c) => setCoverStyle({ closureColor: c }))) : null,
+    ].filter(Boolean));
+  } else {
+    panel.append(
+      section('Add a title', el('div', { class: 'chips' },
+        [['foil', 'Gold foil'], ['bookplate', 'Bookplate'], ['plate', 'Brass plate'], ['label', 'Label strip'], ['plain', 'Handwritten']].map(([st, name]) =>
+          el('button', { class: 'chip', onclick: () => { addText(st); if (st === 'label' || st === 'plain') { const it = findItem(state.selectedId); if (it) updateSelected({ text: state.book.title || it.text }, { panel: true }); } } }, name)))),
+      el('p', { class: 'hint' }, 'Tip: click an existing title to change its style, font or colour — or delete it.'),
+      section('Add a patch or sticker', el('button', { class: 'btn', onclick: (e) => { e.stopPropagation(); state.stickerLook = 'patch'; openPopover('sticker'); }, html: icon('sticker') + 'Choose a patch…' })),
+    );
+  }
+}
+
 function renderPagePanel(panel) {
   const sp = spread();
   panel.append(panelHeader(sp.cover ? 'Cover' : 'These pages'));
   if (sp.cover) {
-    panel.append(section('Cover material', paperPicker(COVERS, sp.pages[0], (id) => setPaper(0, id))));
+    renderCoverPanel(panel, sp);
   } else {
     panel.append(
       section('Left page paper', paperPicker(PAPERS, sp.pages[0], (id) => setPaper(0, id))),
@@ -1210,6 +1314,7 @@ function wireUI() {
     }
   });
   document.addEventListener('click', (e) => {
+    if (!e.target.isConnected) return; // clicked element was re-rendered away
     if (!e.target.closest('.menu-wrap')) closeMenu();
     if (!e.target.closest('#popover') && !e.target.closest('.tool')) closePopover();
   });
