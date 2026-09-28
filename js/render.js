@@ -1,5 +1,6 @@
 // Canvas renderers for photo frames, washi tape and note backgrounds.
-import { rng, makeCanvas, grain, tornRectPath, rgba, shade, clamp } from './util.js';
+import { rng, makeCanvas, grain, tornRectPath, rgba, shade, clamp, fibres } from './util.js';
+import { paperCanvas, PAGE_W, PAGE_H } from './papers.js';
 
 export const FONTS = [
   { family: 'Caveat', label: 'Caveat' },
@@ -14,11 +15,15 @@ export const FONTS = [
   { family: 'Courier Prime', label: 'Courier Prime' },
   { family: 'Playfair Display', label: 'Playfair Display' },
   { family: 'IM Fell English', label: 'IM Fell English (old book)' },
+  { family: 'Great Vibes', label: 'Great Vibes (script title)' },
+  { family: 'Pinyon Script', label: 'Pinyon Script (fancy)' },
+  { family: 'La Belle Aurore', label: 'La Belle Aurore (pen)' },
+  { family: 'Nothing You Could Do', label: 'Nothing You Could Do (pen)' },
 ];
 
 export const INKS = ['#2b2118', '#5b3a29', '#1f3a5f', '#9e2a2b', '#2f5d3a', '#b0772b', '#6b3f6b', '#7d8a9a', '#fffaf0'];
 export const NOTE_COLORS = ['#f3dc8c', '#f2c9b8', '#cfdcb8', '#bcd3e0', '#e6d2ea', '#fdf9ef', '#d4b48c', '#f3e3c3'];
-export const TAPE_COLORS = ['#e8b4a6', '#c9d6b2', '#a9c6d8', '#f1d58a', '#d9c2e0', '#e6d8c0', '#c2a07c', '#b86b5e', '#7d9a8a'];
+export const TAPE_COLORS = ['#e3cfa3', '#e8b4a6', '#c9d6b2', '#a9c6d8', '#f1d58a', '#d9c2e0', '#e6d8c0', '#c2a07c', '#b86b5e', '#7d9a8a'];
 
 export const FRAMES = [
   { id: 'polaroid', name: 'Polaroid' },
@@ -28,6 +33,8 @@ export const FRAMES = [
   { id: 'torn', name: 'Torn paper' },
   { id: 'oval', name: 'Oval' },
   { id: 'film', name: 'Film strip' },
+  { id: 'stamp', name: 'Postage stamp' },
+  { id: 'mat', name: 'Aged paper mat' },
   { id: 'none', name: 'No frame' },
 ];
 
@@ -54,6 +61,7 @@ export const NOTE_STYLES = [
   { id: 'label', name: 'Label strip', pad: [10, 16, 10, 16], bg: '#fdf9ef' },
   { id: 'ticket', name: 'Ticket', pad: [22, 34, 22, 34], bg: '#f3e3c3' },
   { id: 'stamp', name: 'Ink stamp', pad: [16, 18, 16, 18] },
+  { id: 'torn', name: 'Torn note', pad: [18, 20, 18, 20], bg: '#efe4c8' },
   { id: 'bookplate', name: 'Bookplate', pad: [26, 34, 26, 34], bg: '#f6ecd6' },
   { id: 'plate', name: 'Brass plate', pad: [14, 42, 14, 42] },
   { id: 'foil', name: 'Gold foil', pad: [4, 4, 4, 4] },
@@ -87,6 +95,8 @@ export function photoLayout(item) {
     case 'torn': return { W: w + 24, H: h + 24, ix: 12, iy: 12, m: 6 };
     case 'oval': return { W: w + 20, H: h + 20, ix: 10, iy: 10, m: 0 };
     case 'film': return { W: w + 20, H: h + 56, ix: 10, iy: 28, m: 0 };
+    case 'stamp': return { W: w + 28, H: h + 28, ix: 14, iy: 14, m: 0 };
+    case 'mat': return { W: w + 44, H: h + 44, ix: 22, iy: 22, m: 6 };
     default: return { W: w, H: h, ix: 0, iy: 0, m: 0 };
   }
 }
@@ -130,8 +140,25 @@ function photoPixels(item, img, res) {
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
     applyFilter(ctx, c.width, c.height, item.filter);
   } else {
-    ctx.fillStyle = '#d9cdb6';
-    ctx.fillRect(0, 0, c.width, c.height);
+    // empty photo slot
+    const W = c.width, H = c.height, u = res;
+    ctx.fillStyle = '#e4d9c3';
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = 'rgba(107,63,38,0.45)';
+    ctx.setLineDash([8 * u, 6 * u]);
+    ctx.lineWidth = 2 * u;
+    ctx.strokeRect(8 * u, 8 * u, W - 16 * u, H - 16 * u);
+    ctx.setLineDash([]);
+    const cx = W / 2, cy = H / 2 - 12 * u, s = Math.min(W, H) / 7;
+    ctx.strokeStyle = 'rgba(107,63,38,0.6)';
+    ctx.lineWidth = 2.2 * u;
+    ctx.strokeRect(cx - s, cy - s * 0.65, s * 2, s * 1.35);
+    ctx.beginPath(); ctx.arc(cx, cy + s * 0.02, s * 0.4, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeRect(cx - s * 0.45, cy - s * 0.85, s * 0.5, s * 0.2);
+    ctx.fillStyle = 'rgba(80,50,30,0.75)';
+    ctx.font = `${Math.max(12, Math.min(20, item.w / 11)) * u}px "Patrick Hand", cursive`;
+    ctx.textAlign = 'center';
+    ctx.fillText('double-click to add a photo', cx, cy + s + 22 * u, W - 20 * u);
   }
   return c;
 }
@@ -252,11 +279,41 @@ export function renderPhoto(item, img, res = 2) {
       ctx.fillText('KODAK 400', 12, L.H - 24 + 0);
       break;
     }
+    case 'stamp': {
+      ctx.fillStyle = '#fbf8ef';
+      ctx.fillRect(0, 0, L.W, L.H);
+      put();
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-out';
+      const step = 12;
+      for (let x = step / 2; x < L.W; x += step) { hole(ctx, x, 0); hole(ctx, x, L.H); }
+      for (let y = step / 2; y < L.H; y += step) { hole(ctx, 0, y); hole(ctx, L.W, y); }
+      ctx.restore();
+      break;
+    }
+    case 'mat': {
+      ctx.save();
+      tornRectPath(ctx, 0, 0, L.W, L.H, r, 5, 8);
+      ctx.clip();
+      const src = paperCanvas('aged');
+      ctx.drawImage(src, r() * (src.width - L.W * 2), r() * (src.height - L.H * 2), L.W * 2, L.H * 2, 0, 0, L.W, L.H);
+      ctx.restore();
+      ctx.save();
+      tornRectPath(ctx, 0, 0, L.W, L.H, rng(item.id), 5, 8);
+      ctx.strokeStyle = 'rgba(255,248,230,0.8)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = '#fbf8f1';
+      ctx.fillRect(L.ix - 5, L.iy - 5, w + 10, h + 10);
+      put();
+      break;
+    }
     default:
       put();
   }
   return { canvas: c, W: L.W, H: L.H, m: L.m };
 }
+
+function hole(ctx, x, y) { ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); }
 
 function roundRect(ctx, x, y, w, h, rad) {
   ctx.beginPath();
@@ -307,6 +364,15 @@ function tapePattern(ctx, x, y, w, h, color, pattern) {
     ctx.font = `${Math.round(h * 0.45)}px serif`;
     ctx.textBaseline = 'middle';
     for (let i = 6; i < w - 6; i += h * 0.8) ctx.fillText('♥', x + i, y + h / 2 + 1);
+  } else if (pattern === 'masking') {
+    ctx.globalAlpha = 1;
+    fibres(ctx, w, h, Math.round(w * h / 60), 'rgba(120,90,50,0.18)', Math.random, 5);
+    ctx.strokeStyle = 'rgba(90,65,30,0.12)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const cx = x + Math.random() * w;
+      ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx + (Math.random() - 0.5) * 10, y + h); ctx.stroke();
+    }
   } else if (pattern === 'text') {
     ctx.fillStyle = ink;
     ctx.globalAlpha = 0.7;
@@ -327,7 +393,7 @@ function tapePiece(ctx, x, y, w, h, deg, color, r, pattern = 'plain') {
   tapeShape(ctx, 0, 0, w, h, r);
   ctx.save();
   ctx.clip();
-  ctx.fillStyle = rgba(color, 0.78);
+  ctx.fillStyle = rgba(color, pattern === 'masking' ? 0.9 : 0.78);
   ctx.fillRect(0, 0, w, h);
   tapePattern(ctx, 0, 0, w, h, color, pattern);
   // sheen
@@ -414,6 +480,23 @@ export function renderNoteBg(item, w, h, res = 2) {
       ctx.beginPath(); ctx.moveTo(22, h / 2);
       ctx.bezierCurveTo(8, h / 2 - 30, -10, h / 2 - 10, -12, h / 2 - 12 - 0);
       ctx.stroke();
+      break;
+    }
+    case 'torn': {
+      ctx.save();
+      tornRectPath(ctx, 0, 0, w, h, r, 4, 7);
+      ctx.fillStyle = bg;
+      ctx.fill();
+      ctx.clip();
+      const g = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.75);
+      g.addColorStop(0, 'rgba(255,255,255,0.12)'); g.addColorStop(1, 'rgba(120,80,30,0.28)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      fibres(ctx, w, h, Math.round(w * h / 300), 'rgba(110,75,35,0.12)', r, 8);
+      ctx.restore();
+      ctx.save();
+      tornRectPath(ctx, 0, 0, w, h, rng(item.id), 4, 7);
+      ctx.strokeStyle = 'rgba(255,250,235,0.7)'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.restore();
       break;
     }
     case 'label': {
@@ -601,4 +684,47 @@ export function renderSticker(item, res = 2) {
     drawEmoji(ctx, S * (look === 'heart' ? 0.72 : 0.9));
   }
   return { canvas: c, W, H };
+}
+
+// ---------------------------------------------------------------- torn paper scraps
+
+export const SCRAP_EDGES = [
+  { id: 'trbl', name: 'All torn' },
+  { id: 'tb', name: 'Top & bottom' },
+  { id: 'lr', name: 'Sides' },
+  { id: 'b', name: 'One edge' },
+  { id: '', name: 'Straight' },
+];
+
+export function renderScrap(item, res = 2) {
+  const { w, h } = item;
+  const r = rng(item.id);
+  const M = 6;
+  const c = makeCanvas((w + M * 2) * res, (h + M * 2) * res);
+  const ctx = c.getContext('2d');
+  ctx.scale(res, res);
+  ctx.translate(M, M);
+  const edges = item.edges ?? 'trbl';
+  ctx.save();
+  tornRectPath(ctx, 0, 0, w, h, r, 5, 9, edges);
+  ctx.fillStyle = '#f6efdf';
+  ctx.fill();
+  ctx.clip();
+  const src = paperCanvas(item.paper);
+  // tile the texture if the scrap is bigger than a page
+  const sx = (w > PAGE_W || h > PAGE_H) ? 0 : r() * (PAGE_W - w);
+  const sy = (w > PAGE_W || h > PAGE_H) ? 0 : r() * (PAGE_H - h);
+  const k = src.width / PAGE_W;
+  for (let ox = 0; ox < w; ox += PAGE_W) for (let oy = 0; oy < h; oy += PAGE_H) {
+    ctx.drawImage(src, sx * k, sy * k, Math.min(PAGE_W, w - ox) * k, Math.min(PAGE_H, h - oy) * k, ox, oy, Math.min(PAGE_W, w - ox), Math.min(PAGE_H, h - oy));
+  }
+  ctx.restore();
+  // pale fibrous core showing along torn edges
+  ctx.save();
+  tornRectPath(ctx, 0, 0, w, h, rng(item.id), 5, 9, edges);
+  ctx.strokeStyle = 'rgba(250,244,228,0.85)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.restore();
+  return { canvas: c, m: M };
 }
