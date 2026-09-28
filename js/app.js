@@ -4,8 +4,11 @@ import { PAGE_W, PAGE_H, PAPERS, COVERS, paperCanvas, paperThumb } from './paper
 import {
   FONTS, INKS, NOTE_COLORS, TAPE_COLORS, FRAMES, FILTERS, CROPS, NOTE_STYLES,
   METALS, PATCH_COLORS, STICKER_LOOKS,
-  noteStyle, renderPhoto, renderTape, renderNoteBg, distress, renderSticker,
+  noteStyle, renderPhoto, renderTape, renderNoteBg, distress, renderSticker, renderScrap, SCRAP_EDGES,
 } from './render.js';
+import { BOTANICALS, botanical, renderBotanical, botanicalThumb } from './botanicals.js';
+import { EPHEMERA, EPHEMERA_COLORS, STAMP_MOTIFS, ephemeron, renderEphemera } from './ephemera.js';
+import { LAYOUTS, buildLayout } from './layouts.js';
 import {
   COVER_GROUPS, STITCHES, CORNERS, CLOSURES, THREAD_COLORS, CLOSURE_COLORS, COVER_PRESETS,
   coverStyle, renderCoverUnder, renderCoverOver,
@@ -138,7 +141,7 @@ function buildNode(item) {
     scaleX: item.scaleX || 1, scaleY: item.scaleY || 1,
     draggable: state.tool === 'select',
   });
-  const builders = { photo: buildPhoto, text: buildText, tape: buildTape, drawing: buildDrawing, sticker: buildSticker };
+  const builders = { photo: buildPhoto, text: buildText, tape: buildTape, drawing: buildDrawing, sticker: buildSticker, scrap: buildScrap, botanical: buildBotanical, ephemera: buildEphemera };
   (builders[item.type] || (() => {}))(item, g);
   attachEvents(g);
   return g;
@@ -200,6 +203,26 @@ function buildText(item, g) {
   }
   g.add(t);
   g.setAttrs({ boxW: w, boxH: h });
+}
+
+function buildScrap(item, g) {
+  const { canvas, m } = renderScrap(item, 2);
+  g.add(new K.Image({ image: canvas, x: -m, y: -m, width: canvas.width / 2, height: canvas.height / 2, ...SOFT_SHADOW, shadowOpacity: 0.3 }));
+  g.setAttrs({ boxW: item.w, boxH: item.h });
+}
+
+function buildBotanical(item, g) {
+  const { canvas, W, H, pad } = renderBotanical(item, 2);
+  g.add(new K.Image({ image: canvas, x: -pad, y: -pad, width: W, height: H, ...SOFT_SHADOW, shadowBlur: 6, shadowOpacity: 0.35 }));
+  g.setAttrs({ boxW: W - pad * 2, boxH: H - pad * 2 });
+}
+
+function buildEphemera(item, g) {
+  const { canvas, W, H } = renderEphemera(item, 2);
+  const flat = item.kind === 'postmark';
+  g.add(new K.Image({ image: canvas, width: W, height: H, ...(flat ? { opacity: 0.8 } : SOFT_SHADOW) }));
+  if (flat) g.add(new K.Rect({ width: W, height: H, fill: 'rgba(0,0,0,0)' }));
+  g.setAttrs({ boxW: W, boxH: H });
 }
 
 function buildTape(item, g) {
@@ -384,7 +407,8 @@ function attachEvents(g) {
     if (it?.type === 'text') editText(it);
     if (it?.type === 'photo') {
       select(it.id);
-      setTimeout(() => $('#captionInput')?.focus(), 0);
+      if (!it.imageId) replacePhoto(it.id);
+      else setTimeout(() => $('#captionInput')?.focus(), 0);
     }
   });
 }
@@ -604,9 +628,39 @@ function addItem(item) {
   commit();
 }
 
+let replaceTarget = null;
+function replacePhoto(id) {
+  replaceTarget = id;
+  $('#photoInput').click();
+}
+
 async function addPhotos(files) {
   const list = [...files].filter((f) => f.type.startsWith('image/'));
   if (!list.length) return;
+  const target = replaceTarget && findItem(replaceTarget);
+  replaceTarget = null;
+  if (target) {
+    try {
+      const { record, w, h } = await processImageFile(list[0]);
+      const imageId = uid();
+      await Store.putImage(imageId, record);
+      const patch = { imageId, natW: w, natH: h };
+      if (target.imageId && target.crop === 'original') {
+        const base = Math.max(target.w, target.h), a = w / h;
+        Object.assign(patch, a >= 1 ? { w: base, h: base / a } : { w: base * a, h: base });
+      }
+      Object.assign(target, patch);
+      rebuild(target);
+      select(target.id);
+      renderPanel();
+      commit();
+    } catch (err) {
+      console.error(err);
+      toast(`Couldn't open “${list[0].name}” — is it a normal photo (JPG/PNG)?`);
+      hideToastSoon(3000);
+    }
+    return;
+  }
   toast(list.length > 1 ? `Adding ${list.length} photos…` : 'Adding photo…');
   for (const f of list) {
     try {
@@ -640,6 +694,7 @@ function addText(style) {
     tag: { font: 'Caveat', fontSize: 30, width: 180, text: 'with love' },
     label: { font: 'Special Elite', fontSize: 22, width: 240, text: 'SUMMER · 2026', align: 'center' },
     ticket: { font: 'Special Elite', fontSize: 22, width: 200, text: 'ADMIT ONE\nthe best day', align: 'center' },
+    torn: { font: 'Nothing You Could Do', fontSize: 20, width: 190, text: 'a little note\nabout today ♡' },
     stamp: { font: 'Special Elite', fontSize: 30, width: 200, text: 'Memories', align: 'center', color: '#9e2a2b' },
     bookplate: { font: 'IM Fell English', fontSize: 34, width: 300, text: state.book.title || 'My Scrapbook', align: 'center', color: '#3b2a1e' },
     plate: { font: 'Playfair Display', fontSize: 28, width: 280, text: state.book.title || 'My Scrapbook', align: 'center', color: '#3a2a14' },
@@ -660,11 +715,27 @@ function addSticker(emoji) {
   addItem({ id: uid(), type: 'sticker', emoji, size, look, patchColor: state.patchColor, ...placement(size * 1.9, size * 1.9, 120) });
 }
 
+function addScrap(paper) {
+  const w = 220 + Math.round(Math.random() * 80), h = 160 + Math.round(Math.random() * 80);
+  addItem({ id: uid(), type: 'scrap', paper, w, h, edges: 'trbl', ...placement(w, h, 120) });
+}
+
+function addBotanical(kind) {
+  const b = botanical(kind);
+  addItem({ id: uid(), type: 'botanical', kind, flip: false, diecut: false, ...placement(b.w, b.h, 120) });
+}
+
+function addEphemera(kind) {
+  const e = ephemeron(kind);
+  addItem({ id: uid(), type: 'ephemera', kind, ...placement(e.w, e.h, 120) });
+}
+
 function addTape() {
   const color = TAPE_COLORS[Math.floor(Math.random() * TAPE_COLORS.length)];
-  const patterns = ['plain', 'stripes', 'dots', 'grid', 'plain', 'hearts'];
+  // (masking tape looks best in its natural beige)
+  const patterns = ['plain', 'stripes', 'dots', 'grid', 'masking', 'hearts'];
   const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-  const it = { id: uid(), type: 'tape', w: 160, h: 36, color, pattern, ...placement(160, 36, 120) };
+  const it = { id: uid(), type: 'tape', w: 160, h: 36, color: pattern === 'masking' ? '#e3cfa3' : color, pattern, ...placement(160, 36, 120) };
   it.rotation = Math.round((Math.random() - 0.5) * 50);
   addItem(it);
 }
@@ -834,7 +905,7 @@ function moveSpread(dir) {
 
 function setTool(tool) {
   if (tool === 'photo') { $('#photoInput').click(); return; }
-  if (tool === 'text' || tool === 'sticker') { openPopover(tool); return; }
+  if (tool === 'text' || tool === 'sticker' || tool === 'collage') { openPopover(tool); return; }
   if (tool === 'tape') { addTape(); return; }
   if (tool === 'paper') {
     state.selectedId = null;
@@ -907,6 +978,19 @@ function openPopover(kind, refresh = false) {
       words.appendChild(b);
     });
     pop.appendChild(words);
+  }
+  if (kind === 'collage') {
+    pop.insertAdjacentHTML('beforeend', '<h3>Torn paper scraps</h3>');
+    pop.appendChild(el('div', { class: 'scrap-grid' }, PAPERS.map((p) =>
+      el('button', { title: p.name, 'aria-label': p.name + ' scrap', onclick: () => { closePopover(); addScrap(p.id); } },
+        el('img', { src: paperThumb(p.id), alt: '' })))));
+    pop.insertAdjacentHTML('beforeend', '<h3>Travel ephemera</h3>');
+    pop.appendChild(el('div', { class: 'chips' }, EPHEMERA.map((e) =>
+      el('button', { class: 'chip', onclick: () => { closePopover(); addEphemera(e.id); } }, e.name))));
+    pop.insertAdjacentHTML('beforeend', '<h3>Botanicals</h3>');
+    pop.appendChild(el('div', { class: 'botanical-grid' }, BOTANICALS.map((b) =>
+      el('button', { title: b.name, 'aria-label': b.name, onclick: () => { closePopover(); addBotanical(b.id); } },
+        el('img', { src: botanicalThumb(b.id), alt: '' }), el('span', {}, b.name)))));
   }
   pop.hidden = false;
   const r = btn.getBoundingClientRect();
@@ -1040,6 +1124,7 @@ function renderPanel() {
         updateSelected({ crop: c, w, h }, { panel: true });
       })),
       section('Filter', chips(FILTERS, it.filter, (f) => updateSelected({ filter: f }, { panel: true }))),
+      section('Picture', el('button', { class: 'btn', onclick: () => replacePhoto(it.id), html: icon('replace') + (it.imageId ? 'Replace photo…' : 'Choose photo…') })),
       actionRow());
     return;
   }
@@ -1074,10 +1159,47 @@ function renderPanel() {
   if (it.type === 'tape') {
     panel.append(panelHeader('Washi tape'),
       section('Colour', swatches(TAPE_COLORS, it.color, (c) => updateSelected({ color: c }, { panel: true }))),
-      section('Pattern', chips(['plain', 'stripes', 'dots', 'grid', 'hearts', 'text'].map((p) => ({ id: p, name: p[0].toUpperCase() + p.slice(1) })), it.pattern, (p) => updateSelected({ pattern: p }, { panel: true }))),
+      section('Pattern', chips(['plain', 'masking', 'stripes', 'dots', 'grid', 'hearts', 'text'].map((p) => ({ id: p, name: p[0].toUpperCase() + p.slice(1) })), it.pattern, (p) => updateSelected({ pattern: p }, { panel: true }))),
       range('Length', 40, 500, 5, Math.round(it.w), (v, done) => updateSelected({ w: v }, { commitNow: done })),
       range('Width', 16, 80, 1, Math.round(it.h), (v, done) => updateSelected({ h: v }, { commitNow: done })),
       actionRow());
+    return;
+  }
+
+  if (it.type === 'scrap') {
+    panel.append(panelHeader('Paper scrap'),
+      section('Paper', paperPicker(PAPERS, it.paper, (p) => updateSelected({ paper: p }, { panel: true }))),
+      section('Edges', chips(SCRAP_EDGES, it.edges ?? 'trbl', (v) => updateSelected({ edges: v }, { panel: true }))),
+      range('Width', 40, 900, 5, Math.round(it.w), (v, done) => updateSelected({ w: v }, { commitNow: done })),
+      range('Height', 40, 800, 5, Math.round(it.h), (v, done) => updateSelected({ h: v }, { commitNow: done })),
+      el('p', { class: 'hint' }, 'Layer scraps under photos: use “Send to back” below.'),
+      actionRow());
+    return;
+  }
+
+  if (it.type === 'botanical') {
+    panel.append(panelHeader(botanical(it.kind).name),
+      section('Look', el('div', { class: 'btn-row' },
+        el('button', { class: 'btn', onclick: () => updateSelected({ flip: !it.flip }, { panel: true }), html: icon('flip') + 'Flip' }),
+        el('button', { class: 'btn' + (it.diecut ? ' on' : ''), onclick: () => updateSelected({ diecut: !it.diecut }, { panel: true }) }, it.diecut ? 'Remove white edge' : 'White sticker edge'))),
+      section('Swap for', chips(BOTANICALS, it.kind, (k) => updateSelected({ kind: k }, { panel: true }))),
+      actionRow());
+    return;
+  }
+
+  if (it.type === 'ephemera') {
+    const e = ephemeron(it.kind);
+    panel.append(panelHeader(e.name));
+    const field = (key, label, multiline) => section(label, el(multiline ? 'textarea' : 'input', {
+      class: 'text-input', type: 'text', rows: 3, value: multiline ? undefined : (it[key] ?? e[key]),
+      oninput: (ev) => updateSelected({ [key]: ev.target.value }, { commitNow: false }),
+      onchange: () => commit(),
+    }, multiline ? (it[key] ?? e[key]) : null));
+    panel.append(field('text', e.labels[0], e.id === 'postcard'));
+    if (e.labels[1]) panel.append(field('text2', e.labels[1], false));
+    panel.append(section(e.id === 'postmark' ? 'Ink' : 'Colour', swatches(EPHEMERA_COLORS, it.color || e.color, (c) => updateSelected({ color: c }, { panel: true }))));
+    if (e.id === 'stamp') panel.append(section('Picture', chips(STAMP_MOTIFS, it.motif || e.motif, (m) => updateSelected({ motif: m }, { panel: true }))));
+    panel.append(actionRow());
     return;
   }
 
@@ -1162,6 +1284,17 @@ function renderCoverPanel(panel, sp) {
   }
 }
 
+function applyLayout(layout) {
+  const sp = spread();
+  if (sp.items.length && !confirm(`Replace everything on these pages with the “${layout.name}” layout? (You can undo.)`)) return;
+  sp.pages = [...layout.pages];
+  sp.items = buildLayout(layout.id, uid, textItem);
+  state.selectedId = null;
+  renderSpread();
+  commit();
+  renderPanel();
+}
+
 function renderPagePanel(panel) {
   const sp = spread();
   panel.append(panelHeader(sp.cover ? 'Cover' : 'These pages'));
@@ -1177,7 +1310,10 @@ function renderPagePanel(panel) {
           el('div', { class: 'btn-row' },
             el('button', { class: 'btn', disabled: state.idx <= 1, onclick: () => moveSpread(-1), html: icon('prev') + 'Move earlier' }),
             el('button', { class: 'btn', disabled: state.idx >= state.book.spreads.length - 1, onclick: () => moveSpread(1), html: 'Move later' + icon('next') })),
-          el('button', { class: 'btn danger', onclick: deleteSpread, html: icon('trash') + 'Tear out these pages' }))));
+          el('button', { class: 'btn danger', onclick: deleteSpread, html: icon('trash') + 'Tear out these pages' }))),
+      section('Start from a layout', el('div', { class: 'chips' }, LAYOUTS.map((l) =>
+        el('button', { class: 'chip', onclick: () => applyLayout(l) }, l.name))),
+        el('p', { class: 'hint' }, 'Fills these pages with a ready-made design and empty photo slots — double-click a slot to add your photo.')));
   }
   panel.append(el('p', { class: 'hint' }, 'Tip: click something on the page to decorate it. Double-click writing to edit it.'));
 }
