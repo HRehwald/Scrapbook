@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Scrapbook</title>
+  <meta name="description" content="A cosy little scrapbook: add photos, write notes, doodle and decorate pages.">
+  <meta name="theme-color" content="#8a6443">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='8' y='6' width='46' height='54' rx='4' fill='%236b3f26'/%3E%3Crect x='14' y='12' width='34' height='42' rx='2' fill='none' stroke='%23e8d2b0' stroke-width='2' stroke-dasharray='4 3'/%3E%3Crect x='18' y='24' width='26' height='12' fill='%23f3e3c3'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@700&family=Caveat:wght@500;700&family=Courier+Prime&family=Gloria+Hallelujah&family=Homemade+Apple&family=IM+Fell+English&family=Kalam&family=Patrick+Hand&family=Playfair+Display:ital@0;1&family=Reenie+Beanie&family=Rock+Salt&family=Special+Elite&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app" id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <input id="bookTitle" class="book-title" type="text" maxlength="60" aria-label="Scrapbook title" spellcheck="false">
+      </div>
+
+      <nav class="pager" aria-label="Pages">
+        <button class="icon-btn" id="prevBtn" data-icon="prev" title="Previous page (PageUp)" aria-label="Previous page"></button>
+        <span class="page-label" id="pageLabel">Cover</span>
+        <button class="icon-btn" id="nextBtn" data-icon="next" title="Next page (PageDown)" aria-label="Next page"></button>
+        <button class="icon-btn" id="addSpreadBtn" data-icon="plus" title="Add two new pages after this one" aria-label="Add pages"></button>
+      </nav>
+
+      <div class="top-actions">
+        <button class="icon-btn" id="undoBtn" data-icon="undo" title="Undo (Ctrl+Z)" aria-label="Undo"></button>
+        <button class="icon-btn" id="redoBtn" data-icon="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo"></button>
+        <span class="divider" aria-hidden="true"></span>
+        <button class="icon-btn hide-sm" id="zoomOutBtn" data-icon="zoomOut" title="Zoom out" aria-label="Zoom out"></button>
+        <button class="icon-btn hide-sm" id="zoomFitBtn" data-icon="fit" title="Fit to screen" aria-label="Fit to screen"></button>
+        <button class="icon-btn hide-sm" id="zoomInBtn" data-icon="zoomIn" title="Zoom in" aria-label="Zoom in"></button>
+        <span class="divider hide-sm" aria-hidden="true"></span>
+        <span class="save-state" id="saveState" aria-live="polite"></span>
+        <div class="menu-wrap">
+          <button class="icon-btn" id="menuBtn" data-icon="menu" title="More" aria-label="More options" aria-haspopup="true" aria-expanded="false"></button>
+          <div class="menu" id="menu" role="menu" hidden>
+            <button role="menuitem" data-action="png"><span data-icon="download"></span>Download this page as picture</button>
+            <button role="menuitem" data-action="backup"><span data-icon="save"></span>Save backup file</button>
+            <button role="menuitem" data-action="restore"><span data-icon="upload"></span>Open backup file…</button>
+            <hr>
+            <button role="menuitem" data-action="help"><span data-icon="help"></span>How to use</button>
+            <button role="menuitem" data-action="new" class="danger"><span data-icon="trash"></span>Start a fresh book</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <aside class="toolbar" aria-label="Tools">
+      <button class="tool" data-tool="select" data-icon="select" title="Move &amp; select (V)"><span>Select</span></button>
+      <button class="tool" data-tool="photo" data-icon="photo" title="Add photos"><span>Photo</span></button>
+      <button class="tool" data-tool="text" data-icon="text" title="Add writing"><span>Write</span></button>
+      <button class="tool" data-tool="draw" data-icon="draw" title="Draw (D)"><span>Draw</span></button>
+      <button class="tool" data-tool="tape" data-icon="tape" title="Washi tape"><span>Tape</span></button>
+      <button class="tool" data-tool="sticker" data-icon="sticker" title="Stickers &amp; stamps"><span>Stickers</span></button>
+      <button class="tool" data-tool="paper" data-icon="pages" title="Paper &amp; pages"><span>Paper</span></button>
+    </aside>
+
+    <main class="desk" id="desk">
+      <div class="desk-scroll" id="deskScroll">
+        <div class="book" id="book">
+          <div id="stage"></div>
+        </div>
+      </div>
+      <div class="drop-hint" id="dropHint" hidden><span>Drop your photos here ✿</span></div>
+    </main>
+
+    <section class="panel" id="panel" aria-label="Options"></section>
+
+    <div class="popover" id="popover" hidden></div>
+  </div>
+
+  <dialog class="card-dialog" id="helpDialog">
+    <form method="dialog">
+      <h2>How to scrapbook here</h2>
+      <ul>
+        <li><b>Photo</b> — pick pictures (or drag &amp; drop / paste them). Choose a frame, crop and filter on the right.</li>
+        <li><b>Write</b> — add handwriting, sticky notes, tags, tickets or ink stamps. <em>Double-click</em> any writing to edit it.</li>
+        <li><b>Draw</b> — doodle with pen, marker or pencil. The eraser removes whole strokes.</li>
+        <li><b>Tape &amp; Stickers</b> — decorate! Drag the corner handles to resize, the round handle on top to rotate.</li>
+        <li><b>Paper</b> — change the paper of each page, or the cover material.</li>
+        <li>Use <b>◀ ▶</b> at the top to flip pages and <b>+</b> to add more pages.</li>
+      </ul>
+      <p class="note">Everything saves automatically <em>in this browser</em>. To keep it safe or move it to another device, use <b>☰ → Save backup file</b>, then <b>Open backup file</b> on the other device.</p>
+      <p class="keys">Shortcuts: Delete · Ctrl+Z / Ctrl+Shift+Z · Ctrl+D duplicate · arrows nudge · PageUp/PageDown flip</p>
+      <button class="btn primary" value="ok">Let's go!</button>
+    </form>
+  </dialog>
+
+  <input type="file" id="photoInput" accept="image/*" multiple hidden>
+  <input type="file" id="backupInput" accept=".json,application/json" hidden>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="js/vendor/konva.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
