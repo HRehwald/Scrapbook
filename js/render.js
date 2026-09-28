@@ -54,6 +54,18 @@ export const NOTE_STYLES = [
   { id: 'label', name: 'Label strip', pad: [10, 16, 10, 16], bg: '#fdf9ef' },
   { id: 'ticket', name: 'Ticket', pad: [22, 34, 22, 34], bg: '#f3e3c3' },
   { id: 'stamp', name: 'Ink stamp', pad: [16, 18, 16, 18] },
+  { id: 'bookplate', name: 'Bookplate', pad: [26, 34, 26, 34], bg: '#f6ecd6' },
+  { id: 'plate', name: 'Brass plate', pad: [14, 42, 14, 42] },
+  { id: 'foil', name: 'Gold foil', pad: [4, 4, 4, 4] },
+];
+
+export const METALS = ['#c9a24a', '#d9b46a', '#b8733a', '#c98b7a', '#a7adb3', '#fdf9ef'];
+export const PATCH_COLORS = ['#f3dc8c', '#e8b4a6', '#c9d6b2', '#a9c6d8', '#d9c2e0', '#fdf9ef', '#9e2a2b', '#1f3a5f', '#2f5d3a', '#2b2118'];
+export const STICKER_LOOKS = [
+  { id: 'plain', name: 'Plain' },
+  { id: 'diecut', name: 'Die-cut' },
+  { id: 'patch', name: 'Round patch' },
+  { id: 'heart', name: 'Heart patch' },
 ];
 
 export const noteStyle = (id) => NOTE_STYLES.find((s) => s.id === id) || NOTE_STYLES[0];
@@ -425,6 +437,53 @@ export function renderNoteBg(item, w, h, res = 2) {
       ctx.strokeRect(20, 10, w - 40, h - 20);
       break;
     }
+    case 'bookplate': {
+      // cream plate with notched corners and a double rule
+      const n = 14;
+      const notched = (inset) => {
+        const x0 = inset, y0 = inset, x1 = w - inset, y1 = h - inset, k = Math.max(4, n - inset);
+        ctx.beginPath();
+        ctx.moveTo(x0 + k, y0);
+        ctx.lineTo(x1 - k, y0); ctx.arc(x1, y0, k, Math.PI, Math.PI / 2, true);
+        ctx.lineTo(x1, y1 - k); ctx.arc(x1, y1, k, -Math.PI / 2, Math.PI, true);
+        ctx.lineTo(x0 + k, y1); ctx.arc(x0, y1, k, 0, -Math.PI / 2, true);
+        ctx.lineTo(x0, y0 + k); ctx.arc(x0, y0, k, Math.PI / 2, 0, true);
+        ctx.closePath();
+      };
+      notched(0);
+      ctx.fillStyle = bg;
+      ctx.fill();
+      ctx.save(); ctx.clip();
+      const g = ctx.createRadialGradient(w / 2, h / 2, 10, w / 2, h / 2, Math.max(w, h) * 0.7);
+      g.addColorStop(0, 'rgba(255,255,255,0.2)'); g.addColorStop(1, 'rgba(120,80,30,0.18)');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+      ctx.strokeStyle = rgba('#6b3f26', 0.75);
+      ctx.lineWidth = 2; notched(7); ctx.stroke();
+      ctx.lineWidth = 0.8; notched(11); ctx.stroke();
+      break;
+    }
+    case 'plate': {
+      roundRect(ctx, 0, 0, w, h, 6);
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#f6de94'); g.addColorStop(0.45, '#c9a24a'); g.addColorStop(0.55, '#b8903d'); g.addColorStop(1, '#e9c872');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(90,60,15,0.7)'; ctx.lineWidth = 1.2; ctx.stroke();
+      roundRect(ctx, 5, 5, w - 10, h - 10, 4);
+      ctx.strokeStyle = 'rgba(255,245,210,0.6)'; ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      for (let x = 0; x < w; x += 3) ctx.fillRect(x, 0, 1, h); // brushed metal
+      for (const sx of [18, w - 18]) {
+        const sg = ctx.createRadialGradient(sx - 1.5, h / 2 - 1.5, 0.5, sx, h / 2, 6);
+        sg.addColorStop(0, '#fff6d0'); sg.addColorStop(1, '#7d5e24');
+        ctx.fillStyle = sg;
+        ctx.beginPath(); ctx.arc(sx, h / 2, 5.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(60,40,10,0.8)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(sx - 3.5, h / 2 + 1.5); ctx.lineTo(sx + 3.5, h / 2 - 1.5); ctx.stroke();
+      }
+      break;
+    }
     case 'stamp': {
       const ink = item.color || '#9e2a2b';
       ctx.strokeStyle = ink;
@@ -437,7 +496,7 @@ export function renderNoteBg(item, w, h, res = 2) {
     default:
       break;
   }
-  if (style !== 'plain' && style !== 'stamp') grain(ctx, c.width, c.height, 8, r);
+  if (!['plain', 'stamp', 'foil', 'plate'].includes(style)) grain(ctx, c.width, c.height, 8, r);
   return { canvas: c, m: M };
 }
 
@@ -455,4 +514,91 @@ export function distress(canvas, seed, amount = 0.25) {
     ctx.fill();
   }
   ctx.restore();
+}
+
+// ---------------------------------------------------------------- stickers
+
+const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+
+function heartPath(ctx, cx, cy, s) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.9);
+  ctx.bezierCurveTo(cx - s * 1.5, cy - s * 0.1, cx - s * 0.9, cy - s * 1.25, cx, cy - s * 0.45);
+  ctx.bezierCurveTo(cx + s * 0.9, cy - s * 1.25, cx + s * 1.5, cy - s * 0.1, cx, cy + s * 0.9);
+  ctx.closePath();
+}
+
+// Returns {canvas, W, H} for non-plain sticker looks (drawn at 2x).
+export function renderSticker(item, res = 2) {
+  const S = item.size || 72;
+  const look = item.look;
+  const pad = look === 'diecut' ? 10 : S * 0.45;
+  const W = S + pad * 2, H = S + pad * 2;
+  const c = makeCanvas(W * res, H * res);
+  const ctx = c.getContext('2d');
+  ctx.scale(res, res);
+  const drawEmoji = (g, size) => {
+    g.font = `${size}px ${EMOJI_FONT}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(item.emoji, W / 2, H / 2 + size * 0.06);
+  };
+  if (look === 'diecut') {
+    const tmp = makeCanvas(W * res, H * res);
+    const t = tmp.getContext('2d');
+    t.scale(res, res);
+    drawEmoji(t, S);
+    t.setTransform(1, 0, 0, 1, 0, 0);
+    t.globalCompositeOperation = 'source-in';
+    t.fillStyle = '#ffffff';
+    t.fillRect(0, 0, tmp.width, tmp.height);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      ctx.drawImage(tmp, Math.cos(a) * 6 * res, Math.sin(a) * 6 * res);
+    }
+    ctx.restore();
+    drawEmoji(ctx, S);
+  } else {
+    const col = item.patchColor || '#f3dc8c';
+    const cx = W / 2, cy = H / 2, R = W / 2 - 3;
+    const shape = () => (look === 'heart' ? heartPath(ctx, cx, cy + R * 0.12, R * 0.78) : (ctx.beginPath(), ctx.arc(cx, cy, R, 0, Math.PI * 2)));
+    shape();
+    ctx.fillStyle = col;
+    ctx.fill();
+    // embroidered twill texture
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    ctx.lineWidth = 1;
+    for (let i = -H; i < W; i += 3) { ctx.beginPath(); ctx.moveTo(i, H); ctx.lineTo(i + H, 0); ctx.stroke(); }
+    const g = ctx.createRadialGradient(cx - R * 0.3, cy - R * 0.3, 2, cx, cy, R);
+    g.addColorStop(0, 'rgba(255,255,255,0.2)'); g.addColorStop(1, 'rgba(0,0,0,0.18)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    // overlocked (merrowed) rim
+    shape();
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = shade(col, -45);
+    ctx.stroke();
+    ctx.save();
+    shape();
+    ctx.setLineDash([1.2, 1.6]);
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = shade(col, -15);
+    ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.translate(cx, cy); ctx.scale(0.8, 0.8); ctx.translate(-cx, -cy);
+    shape();
+    ctx.restore();
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1.4;
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.stroke();
+    ctx.setLineDash([]);
+    drawEmoji(ctx, S * (look === 'heart' ? 0.72 : 0.9));
+  }
+  return { canvas: c, W, H };
 }
