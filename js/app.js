@@ -9,6 +9,8 @@ import {
 import { BOTANICALS, botanical, renderBotanical, botanicalThumb } from './botanicals.js';
 import { EPHEMERA, EPHEMERA_COLORS, STAMP_MOTIFS, ephemeron, renderEphemera } from './ephemera.js';
 import { LAYOUTS, buildLayout } from './layouts.js';
+import { PRESSED, pressed, pressedSize, pressedThumb, loadPressed } from './pressed.js';
+import { DESTINATIONS, destination } from './destinations.js';
 import {
   COVER_GROUPS, STITCHES, CORNERS, CLOSURES, THREAD_COLORS, CLOSURE_COLORS, COVER_PRESETS,
   coverStyle, renderCoverUnder, renderCoverOver,
@@ -27,6 +29,7 @@ const state = {
   selectedId: null,
   brush: { kind: 'pen', color: '#2b2118', size: 4 },
   stickerLook: 'plain',
+  kitId: 'greece',
   patchColor: '#f3dc8c',
   eraser: false,
   zoom: 1,
@@ -141,7 +144,7 @@ function buildNode(item) {
     scaleX: item.scaleX || 1, scaleY: item.scaleY || 1,
     draggable: state.tool === 'select',
   });
-  const builders = { photo: buildPhoto, text: buildText, tape: buildTape, drawing: buildDrawing, sticker: buildSticker, scrap: buildScrap, botanical: buildBotanical, ephemera: buildEphemera };
+  const builders = { photo: buildPhoto, text: buildText, tape: buildTape, drawing: buildDrawing, sticker: buildSticker, scrap: buildScrap, botanical: buildBotanical, ephemera: buildEphemera, pressed: buildPressed };
   (builders[item.type] || (() => {}))(item, g);
   attachEvents(g);
   return g;
@@ -215,6 +218,16 @@ function buildBotanical(item, g) {
   const { canvas, W, H, pad } = renderBotanical(item, 2);
   g.add(new K.Image({ image: canvas, x: -pad, y: -pad, width: W, height: H, ...SOFT_SHADOW, shadowBlur: 6, shadowOpacity: 0.35 }));
   g.setAttrs({ boxW: W - pad * 2, boxH: H - pad * 2 });
+}
+
+function buildPressed(item, g) {
+  const flip = item.flip ? { scaleX: -1, x: item.w } : {};
+  const kimg = new K.Image({ width: item.w, height: item.h, ...flip, shadowColor: '#2a1a0c', shadowBlur: 5, shadowOffsetX: 1.5, shadowOffsetY: 3, shadowOpacity: 0.35 });
+  // invisible hit box so the item is clickable even before the image loads
+  g.add(new K.Rect({ width: item.w, height: item.h, fill: 'rgba(0,0,0,0)' }));
+  g.add(kimg);
+  g.setAttrs({ boxW: item.w, boxH: item.h });
+  track(loadPressed(item.asset).then((img) => { kimg.image(img); kimg.getLayer()?.batchDraw(); }, (err) => console.warn(err)));
 }
 
 function buildEphemera(item, g) {
@@ -720,6 +733,33 @@ function addScrap(paper) {
   addItem({ id: uid(), type: 'scrap', paper, w, h, edges: 'trbl', ...placement(w, h, 120) });
 }
 
+function addPressed(asset, height = 200) {
+  const size = pressedSize(asset, height);
+  addItem({ id: uid(), type: 'pressed', asset, ...size, flip: false, ...placement(size.w, size.h, 120) });
+}
+
+function addKitPiece(d, piece) {
+  const e = (kind, extra) => {
+    const def = ephemeron(kind);
+    addItem({ id: uid(), type: 'ephemera', kind, ...extra, ...placement(def.w, def.h, 120) });
+  };
+  if (piece === 'title') {
+    addItem(textItem({ style: 'plain', text: d.title, font: d.titleFont, fontSize: 90, color: d.ink, width: 480, ...placement(480, 120, 60) }));
+  } else if (piece === 'subtitle') {
+    addItem(textItem({ style: 'plain', text: d.subtitle, font: 'Nothing You Could Do', fontSize: 26, width: 320, ...placement(320, 40, 80) }));
+  } else if (piece === 'note') {
+    addItem(textItem({ style: 'torn', text: d.notes[Math.floor(Math.random() * d.notes.length)], font: 'Nothing You Could Do', fontSize: 20, width: 190, ...placement(230, 120, 100) }));
+  } else if (piece === 'paper') {
+    addScrap(d.paper);
+  } else if (piece === 'tape') {
+    const it = { id: uid(), type: 'tape', w: 150, h: 34, color: d.tape, pattern: 'plain', ...placement(150, 34, 120) };
+    it.rotation = Math.round((Math.random() - 0.5) * 40);
+    addItem(it);
+  } else if (['stamp', 'postmark', 'ticket', 'label'].includes(piece)) {
+    e(piece, d[piece]);
+  }
+}
+
 function addBotanical(kind) {
   const b = botanical(kind);
   addItem({ id: uid(), type: 'botanical', kind, flip: false, diecut: false, ...placement(b.w, b.h, 120) });
@@ -980,6 +1020,22 @@ function openPopover(kind, refresh = false) {
     pop.appendChild(words);
   }
   if (kind === 'collage') {
+    const d = destination(state.kitId) || DESTINATIONS[0];
+    pop.insertAdjacentHTML('beforeend', '<h3>Destination kits</h3>');
+    const kitSelect = el('select', { class: 'font-select kit-select', 'aria-label': 'Destination', onchange: (ev) => { state.kitId = ev.target.value; openPopover('collage', true); } },
+      DESTINATIONS.map((x) => el('option', { value: x.id, selected: x.id === d.id }, x.name)));
+    pop.appendChild(kitSelect);
+    const kitBtn = (piece, label) => el('button', { class: 'chip', onclick: () => { closePopover(); addKitPiece(d, piece); } }, label);
+    pop.appendChild(el('div', { class: 'chips kit-chips' },
+      kitBtn('title', 'Title'), kitBtn('subtitle', 'Subtitle'), kitBtn('stamp', 'Stamp'), kitBtn('postmark', 'Postmark'),
+      kitBtn('ticket', 'Ticket'), kitBtn('label', 'Label'), kitBtn('note', 'Note'), kitBtn('paper', 'Paper scrap'), kitBtn('tape', 'Tape')));
+    pop.appendChild(el('div', { class: 'pressed-grid kit-flowers' }, d.flowers.map((f) =>
+      el('button', { title: pressed(f).name, 'aria-label': pressed(f).name, onclick: () => { closePopover(); addPressed(f); } },
+        el('img', { src: pressedThumb(f), alt: '' })))));
+    pop.insertAdjacentHTML('beforeend', '<h3>Pressed flowers</h3>');
+    pop.appendChild(el('div', { class: 'pressed-grid' }, PRESSED.map((p) =>
+      el('button', { title: p.name, 'aria-label': p.name, onclick: () => { closePopover(); addPressed(p.id); } },
+        el('img', { src: pressedThumb(p.id), alt: '', loading: 'lazy' })))));
     pop.insertAdjacentHTML('beforeend', '<h3>Torn paper scraps</h3>');
     pop.appendChild(el('div', { class: 'scrap-grid' }, PAPERS.map((p) =>
       el('button', { title: p.name, 'aria-label': p.name + ' scrap', onclick: () => { closePopover(); addScrap(p.id); } },
@@ -987,7 +1043,7 @@ function openPopover(kind, refresh = false) {
     pop.insertAdjacentHTML('beforeend', '<h3>Travel ephemera</h3>');
     pop.appendChild(el('div', { class: 'chips' }, EPHEMERA.map((e) =>
       el('button', { class: 'chip', onclick: () => { closePopover(); addEphemera(e.id); } }, e.name))));
-    pop.insertAdjacentHTML('beforeend', '<h3>Botanicals</h3>');
+    pop.insertAdjacentHTML('beforeend', '<h3>Drawn botanicals</h3>');
     pop.appendChild(el('div', { class: 'botanical-grid' }, BOTANICALS.map((b) =>
       el('button', { title: b.name, 'aria-label': b.name, onclick: () => { closePopover(); addBotanical(b.id); } },
         el('img', { src: botanicalThumb(b.id), alt: '' }), el('span', {}, b.name)))));
@@ -1177,6 +1233,18 @@ function renderPanel() {
     return;
   }
 
+  if (it.type === 'pressed') {
+    panel.append(panelHeader(pressed(it.asset).name),
+      section('Look', el('button', { class: 'btn', onclick: () => updateSelected({ flip: !it.flip }, { panel: true }), html: icon('flip') + 'Flip' })),
+      section('Swap for', el('div', { class: 'pressed-grid' }, PRESSED.map((p) =>
+        el('button', {
+          class: p.id === it.asset ? 'on' : '', title: p.name, 'aria-label': p.name,
+          onclick: () => updateSelected({ asset: p.id, ...pressedSize(p.id, it.h) }, { panel: true }),
+        }, el('img', { src: pressedThumb(p.id), alt: '', loading: 'lazy' }))))),
+      actionRow());
+    return;
+  }
+
   if (it.type === 'botanical') {
     panel.append(panelHeader(botanical(it.kind).name),
       section('Look', el('div', { class: 'btn-row' },
@@ -1289,6 +1357,7 @@ function applyLayout(layout) {
   if (sp.items.length && !confirm(`Replace everything on these pages with the “${layout.name}” layout? (You can undo.)`)) return;
   sp.pages = [...layout.pages];
   sp.items = buildLayout(layout.id, uid, textItem);
+  if (destination(layout.id)) state.kitId = layout.id;
   state.selectedId = null;
   renderSpread();
   commit();
@@ -1311,7 +1380,9 @@ function renderPagePanel(panel) {
             el('button', { class: 'btn', disabled: state.idx <= 1, onclick: () => moveSpread(-1), html: icon('prev') + 'Move earlier' }),
             el('button', { class: 'btn', disabled: state.idx >= state.book.spreads.length - 1, onclick: () => moveSpread(1), html: 'Move later' + icon('next') })),
           el('button', { class: 'btn danger', onclick: deleteSpread, html: icon('trash') + 'Tear out these pages' }))),
-      section('Start from a layout', el('div', { class: 'chips' }, LAYOUTS.map((l) =>
+      section('Start from a layout', el('div', { class: 'chips' }, LAYOUTS.filter((l) => !l.destination).map((l) =>
+        el('button', { class: 'chip', onclick: () => applyLayout(l) }, l.name)))),
+      section('Destination layouts', el('div', { class: 'chips' }, LAYOUTS.filter((l) => l.destination).map((l) =>
         el('button', { class: 'chip', onclick: () => applyLayout(l) }, l.name))),
         el('p', { class: 'hint' }, 'Fills these pages with a ready-made design and empty photo slots — double-click a slot to add your photo.')));
   }

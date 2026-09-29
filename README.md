@@ -13,3 +13,14 @@ It's a plain static site (no build step). In the repo: **Settings → Pages → 
 Local preview: `python3 -m http.server` and open http://localhost:8000.
 
 Uses [Konva](https://konvajs.org/) (MIT, vendored in `js/vendor/`) and Google Fonts.
+
+## Pressed-flower cut-outs
+
+`tools/extract_botanicals.py` turns green-screen sheets into transparent PNGs:
+
+```bash
+pip install -r tools/requirements.txt
+python3 tools/extract_botanicals.py --clean
+```
+
+It reads every image in `sheets/`, keys out the green (soft edge, spill removal, no fringe), finds each specimen, crops it and saves `assets/botanicals/sheetN-1.png`, `sheetN-2.png`, … plus `assets/botanicals-contact-sheet.png` for checking and renaming. Run with `--help` for tuning options.
