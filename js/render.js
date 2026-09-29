@@ -712,8 +712,10 @@ export function renderScrap(item, res = 2) {
   ctx.clip();
   const src = paperCanvas(item.paper);
   // tile the texture if the scrap is bigger than a page
-  const sx = (w > PAGE_W || h > PAGE_H) ? 0 : r() * (PAGE_W - w);
-  const sy = (w > PAGE_W || h > PAGE_H) ? 0 : r() * (PAGE_H - h);
+  // which part of the paper to show: pinned by the item (ox/oy) or random per scrap
+  const rx = r(), ry = r();
+  const sx = (w > PAGE_W || h > PAGE_H) ? 0 : clamp(item.ox ?? rx * (PAGE_W - w), 0, PAGE_W - w);
+  const sy = (w > PAGE_W || h > PAGE_H) ? 0 : clamp(item.oy ?? ry * (PAGE_H - h), 0, PAGE_H - h);
   const k = src.width / PAGE_W;
   for (let ox = 0; ox < w; ox += PAGE_W) for (let oy = 0; oy < h; oy += PAGE_H) {
     ctx.drawImage(src, sx * k, sy * k, Math.min(PAGE_W, w - ox) * k, Math.min(PAGE_H, h - oy) * k, ox, oy, Math.min(PAGE_W, w - ox), Math.min(PAGE_H, h - oy));

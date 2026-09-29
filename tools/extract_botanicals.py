@@ -11,6 +11,7 @@ For every image in sheets/ this script:
      as loose petals or tiny florets are grouped with their specimen),
   4. saves each one, tightly cropped with a little padding, as a transparent PNG:
      assets/botanicals/sheetN-1.png, sheetN-2.png, ... (numbered in reading order),
+     plus a small WebP thumbnail in assets/botanicals/thumbs/,
   5. writes a contact sheet (assets/botanicals-contact-sheet.png) to review and
      rename them.
 
@@ -215,6 +216,11 @@ def extract_sheet(path, sheet_no, out_dir, padding, args):
         out = Image.fromarray(np.clip(piece + 0.5, 0, 255).astype(np.uint8), 'RGBA')
         name = f'sheet{sheet_no}-{n}.png'
         out.save(out_dir / name, optimize=True)
+        if args.thumbs:
+            thumb = out.copy()
+            thumb.thumbnail((args.thumbs, args.thumbs), Image.LANCZOS)
+            (out_dir / 'thumbs').mkdir(exist_ok=True)
+            thumb.save(out_dir / 'thumbs' / name.replace('.png', '.webp'), 'WEBP', quality=85)
         saved.append((name, out))
     return saved
 
@@ -283,6 +289,7 @@ def main():
     p.add_argument('--min-area', type=float, default=0.0015, help='ignore blobs smaller than this fraction of the sheet')
     p.add_argument('--lime-low', type=float, default=0.45, help='bright-lime level where baked-in glow starts fading (0..1)')
     p.add_argument('--lime-high', type=float, default=0.62, help='bright-lime level that is fully removed (0..1)')
+    p.add_argument('--thumbs', type=int, default=128, help='also save small WebP thumbnails (max side, px) to <out>/thumbs; 0 = off')
     p.add_argument('--clean', action='store_true', help='delete existing sheet*-*.png in the output folder first')
     args = p.parse_args()
 
@@ -291,7 +298,7 @@ def main():
         sys.exit(f'No images found in {args.sheets}')
     args.out.mkdir(parents=True, exist_ok=True)
     if args.clean:
-        for f in args.out.glob('sheet*-*.png'):
+        for f in list(args.out.glob('sheet*-*.png')) + list(args.out.glob('thumbs/sheet*-*.webp')):
             f.unlink()
 
     everything = []

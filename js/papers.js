@@ -1,6 +1,7 @@
 // Procedurally generated paper & cover textures, drawn onto canvases.
 import { rng, makeCanvas, grain, fibres, rgba } from './util.js';
 import { COVERS, COVER_GRAIN, drawCover } from './covers.js';
+import { WORLD_PAPERS, WORLD_GRAIN, WORLD_DRAW } from './world-papers.js';
 
 export const PAGE_W = 600;
 export const PAGE_H = 800;
@@ -22,6 +23,7 @@ export const PAPERS = [
   { id: 'azulejo', name: 'Azulejo tiles', swatch: '#2f5a8f' },
   { id: 'aged', name: 'Parchment', swatch: '#e3cfa4' },
   { id: 'newsprint', name: 'Newsprint', swatch: '#e6e1d3' },
+  ...WORLD_PAPERS,
 ];
 
 export { COVERS };
@@ -37,7 +39,7 @@ export function paperCanvas(id, res = 2) {
   draw(ctx, id, rng(id));
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   // Grain in device pixels for crispness.
-  const amt = GRAIN[id] ?? COVER_GRAIN[id] ?? 10;
+  const amt = GRAIN[id] ?? COVER_GRAIN[id] ?? WORLD_GRAIN[id] ?? 10;
   if (amt) grain(ctx, c.width, c.height, amt, rng(id + 'g'));
   cache.set(key, c);
   return c;
@@ -215,7 +217,8 @@ function draw(ctx, id, r) {
       break;
     case 'newsprint': drawNewsprint(ctx, r); break;
     default:
-      if (id.startsWith('cover-')) drawCover(ctx, id, r, PAGE_W, PAGE_H);
+      if (WORLD_DRAW[id]) WORLD_DRAW[id](ctx, r);
+      else if (id.startsWith('cover-')) drawCover(ctx, id, r, PAGE_W, PAGE_H);
       else fill(ctx, '#f6efdf');
   }
 }
