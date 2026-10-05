@@ -15,10 +15,15 @@ export const WORLD_PAPERS = [
   { id: 'breton', name: 'Breton stripes (France)', swatch: '#1f2f55' },
   { id: 'sardines', name: 'Sardines (Portugal)', swatch: '#3d7ea6' },
   { id: 'nordic', name: 'Nordic knit (Norway)', swatch: '#b3262d' },
+  { id: 'boho', name: 'Boho sun (Ibiza)', swatch: '#d9875a' },
+  { id: 'llengues', name: 'Llengües ikat (Mallorca)', swatch: '#2f5a8f' },
+  { id: 'nyhavn', name: 'Nyhavn houses (Copenhagen)', swatch: '#e0a83a' },
+  { id: 'aran', name: 'Aran knit (Ireland)', swatch: '#efe7d6' },
+  { id: 'london', name: 'London town', swatch: '#c8282e' },
 ];
 
 export const WORLD_GRAIN = {
-  aegean: 12, lemons: 8, swiss: 14, kalocsa: 8, wycinanki: 8, nouveau: 12, sahovnica: 14, breton: 10, sardines: 8, nordic: 10,
+  aegean: 12, lemons: 8, swiss: 14, kalocsa: 8, wycinanki: 8, nouveau: 12, sahovnica: 14, breton: 10, sardines: 8, nordic: 10, boho: 10, llengues: 8, nyhavn: 8, aran: 8, london: 8,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -376,4 +381,231 @@ function nordic(ctx, r) {
   vignette(ctx, '#2a0808', 0.3, 0.4);
 }
 
-export const WORLD_DRAW = { aegean, lemons, swiss, kalocsa, wycinanki, nouveau, sahovnica, breton, sardines, nordic };
+// ------------------------------------------------------------------ Ibiza: boho rainbows & suns
+
+function boho(ctx, r) {
+  fill(ctx, '#ecdcc6');
+  weave(ctx, r, 0.8);
+  const arcs = ['#c8653e', '#e0a83a', '#9aa87a', '#e8b4a6'];
+  for (let y = 120, row = 0; y < H + 100; y += 150, row++) {
+    for (let x = row % 2 ? 150 : 0; x < W + 150; x += 300) {
+      // rainbow arch
+      arcs.forEach((c, i) => {
+        ctx.strokeStyle = c; ctx.lineWidth = 11; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(x, y, 62 - i * 14, Math.PI, 0); ctx.stroke();
+      });
+      // sun
+      const sx = x + 150, sy = y - 70;
+      ellipse(ctx, sx, sy, 16, 16, 0, '#e0a83a');
+      ctx.strokeStyle = '#e0a83a'; ctx.lineWidth = 3;
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        ctx.beginPath(); ctx.moveTo(sx + Math.cos(a) * 22, sy + Math.sin(a) * 22); ctx.lineTo(sx + Math.cos(a) * 31, sy + Math.sin(a) * 31); ctx.stroke();
+      }
+      // little dots
+      for (let k = 0; k < 3; k++) ellipse(ctx, x + 95 + k * 14, y + 30, 3, 3, 0, '#c8653e');
+    }
+  }
+  vignette(ctx, '#7a4a2a', 0.25, 0.4);
+}
+
+// ------------------------------------------------------------------ Mallorca: roba de llengües (ikat)
+
+function llengues(ctx, r) {
+  fill(ctx, '#f2ead8');
+  weave(ctx, r, 0.8);
+  const colW = 75;
+  const palettes = [['#2f5a8f', '#b8433a'], ['#5f7f5a', '#2f5a8f'], ['#b8433a', '#e0a83a']];
+  for (let cx = colW / 2, c = 0; cx < W + colW; cx += colW, c++) {
+    const [outer, inner] = palettes[c % palettes.length];
+    for (let cy = -20; cy < H + 60; cy += 90) {
+      // a "tongue": a flame-like diamond, drawn as horizontal threads with ragged ends (ikat bleed)
+      for (let y = 0; y < 90; y += 2) {
+        const t = y / 90;
+        const half = Math.sin(t * Math.PI) * colW * 0.46 * (0.75 + 0.25 * Math.sin(t * Math.PI * 3));
+        const inHalf = Math.max(0, half - colW * 0.16);
+        const jitter = () => (r() - 0.5) * 6;
+        ctx.fillStyle = outer;
+        ctx.fillRect(cx - half + jitter(), cy + y, half * 2 + jitter(), 1.6);
+        if (inHalf > 2) {
+          ctx.fillStyle = inner;
+          ctx.fillRect(cx - inHalf + jitter(), cy + y, inHalf * 2 + jitter(), 1.6);
+        }
+        if (inHalf > 10) {
+          ctx.fillStyle = '#f2ead8';
+          ctx.fillRect(cx - inHalf * 0.35 + jitter() * 0.5, cy + y, inHalf * 0.7, 1.6);
+        }
+      }
+    }
+  }
+  weave(ctx, r, 0.6);
+  vignette(ctx, '#5a4a2a', 0.22, 0.4);
+}
+
+// ------------------------------------------------------------------ Copenhagen: Nyhavn façades
+
+function house(ctx, r, x, base, w, h, color) {
+  const roofH = 26 + r() * 18;
+  const gable = r() > 0.5;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, base);
+  ctx.lineTo(x, base - h);
+  if (gable) {
+    // stepped gable
+    const steps = 3, sw = w / (steps * 2 + 1);
+    for (let i = 0; i < steps; i++) { ctx.lineTo(x + sw * (i + 1), base - h - (roofH / steps) * i); ctx.lineTo(x + sw * (i + 1), base - h - (roofH / steps) * (i + 1)); }
+    ctx.lineTo(x + w - sw * steps, base - h - roofH);
+    for (let i = steps - 1; i >= 0; i--) { ctx.lineTo(x + w - sw * (i + 1), base - h - (roofH / steps) * i); ctx.lineTo(x + w - sw * i, base - h - (roofH / steps) * i); }
+  } else {
+    ctx.lineTo(x + w / 2, base - h - roofH);
+  }
+  ctx.lineTo(x + w, base - h);
+  ctx.lineTo(x + w, base);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(x + w - 4, base - h, 4, h);
+  // windows
+  const cols = w > 70 ? 3 : 2, rows = Math.floor(h / 46);
+  const ww = 11, wh = 17, gx = (w - cols * ww) / (cols + 1);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
+    const wx = x + gx + i * (ww + gx), wy = base - h + 16 + j * 44;
+    ctx.fillStyle = '#fbf6ea'; ctx.fillRect(wx - 1.5, wy - 1.5, ww + 3, wh + 3);
+    ctx.fillStyle = '#3d4f5f'; ctx.fillRect(wx, wy, ww, wh);
+    ctx.fillStyle = '#fbf6ea'; ctx.fillRect(wx + ww / 2 - 0.6, wy, 1.2, wh); ctx.fillRect(wx, wy + wh / 2 - 0.6, ww, 1.2);
+  }
+  // door
+  ctx.fillStyle = shade(color, -60);
+  ctx.fillRect(x + w / 2 - 7, base - 26, 14, 26);
+}
+
+function nyhavn(ctx, r) {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#dfe8ec'); sky.addColorStop(1, '#f3eee2');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  const colors = ['#e0a83a', '#c8432e', '#3d7ea6', '#e8b4a6', '#7d9a5a', '#d9c27a', '#b8433a', '#5a8fb0', '#e6d2a8'];
+  for (const base of [390, 790]) {
+    let x = -10, k = Math.floor(r() * colors.length);
+    while (x < W) {
+      const w = 54 + r() * 32, h = 200 + r() * 90;
+      house(ctx, r, x, base - 30, w, h, colors[k++ % colors.length]);
+      x += w;
+    }
+    // quay + water
+    ctx.fillStyle = '#6f6a62'; ctx.fillRect(0, base - 30, W, 8);
+    const g = ctx.createLinearGradient(0, base - 22, 0, base);
+    g.addColorStop(0, '#5a7f99'); g.addColorStop(1, '#8fb0c2');
+    ctx.fillStyle = g; ctx.fillRect(0, base - 22, W, 22);
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)'; ctx.lineWidth = 1;
+    for (let i = 0; i < 14; i++) { const wx = r() * W, wy = base - 18 + r() * 14; ctx.beginPath(); ctx.moveTo(wx, wy); ctx.lineTo(wx + 14, wy); ctx.stroke(); }
+  }
+  vignette(ctx, '#3a3a3a', 0.2, 0.45);
+}
+
+// ------------------------------------------------------------------ Ireland: Aran cable knit
+
+function aran(ctx, r) {
+  fill(ctx, '#efe7d6');
+  const c = 8;
+  // base: tiny knit "V" stitches
+  for (let y = 0; y < H; y += c) for (let x = 0; x < W; x += c) {
+    ellipse(ctx, x + c * 0.3, y + c * 0.5, c * 0.26, c * 0.5, -0.45, '#f4eddf');
+    ellipse(ctx, x + c * 0.7, y + c * 0.5, c * 0.26, c * 0.5, 0.45, '#e8dfcb');
+  }
+  const panel = (x0, w, kind) => {
+    ctx.save();
+    if (kind === 'cable') {
+      // two strands crossing over each other
+      for (let y = -40; y < H + 40; y += 64) {
+        for (const dir of [1, -1]) {
+          ctx.lineWidth = w * 0.42; ctx.lineCap = 'round';
+          ctx.strokeStyle = 'rgba(120,100,70,0.35)';
+          ctx.beginPath(); ctx.moveTo(x0 + w * (dir > 0 ? 0.25 : 0.75) + 2, y + 3); ctx.bezierCurveTo(x0 + w * (dir > 0 ? 0.25 : 0.75) + 2, y + 34, x0 + w * (dir > 0 ? 0.75 : 0.25) + 2, y + 30, x0 + w * (dir > 0 ? 0.75 : 0.25) + 2, y + 67); ctx.stroke();
+          ctx.strokeStyle = dir > 0 ? '#f7f1e4' : '#ebe2cf';
+          ctx.beginPath(); ctx.moveTo(x0 + w * (dir > 0 ? 0.25 : 0.75), y); ctx.bezierCurveTo(x0 + w * (dir > 0 ? 0.25 : 0.75), y + 32, x0 + w * (dir > 0 ? 0.75 : 0.25), y + 32, x0 + w * (dir > 0 ? 0.75 : 0.25), y + 64); ctx.stroke();
+        }
+      }
+    } else if (kind === 'diamond') {
+      ctx.strokeStyle = '#f7f1e4'; ctx.lineWidth = 9; ctx.lineJoin = 'round';
+      for (let y = 0; y < H + 90; y += 90) {
+        ctx.shadowColor = 'rgba(110,90,60,0.4)'; ctx.shadowBlur = 3; ctx.shadowOffsetX = 1.5; ctx.shadowOffsetY = 2;
+        ctx.beginPath(); ctx.moveTo(x0 + w / 2, y); ctx.lineTo(x0 + w - 6, y + 45); ctx.lineTo(x0 + w / 2, y + 90); ctx.lineTo(x0 + 6, y + 45); ctx.closePath(); ctx.stroke();
+        ctx.shadowColor = 'transparent';
+        // moss stitch inside the diamond
+        for (let k = 0; k < 10; k++) ellipse(ctx, x0 + w / 2 + (r() - 0.5) * w * 0.4, y + 45 + (r() - 0.5) * 40, 2, 2, 0, '#e2d8c2');
+      }
+    } else {
+      // bobbles
+      for (let y = 20; y < H; y += 40) {
+        const g = ctx.createRadialGradient(x0 + w / 2 - 3, y - 3, 1, x0 + w / 2, y, 10);
+        g.addColorStop(0, '#fbf6ec'); g.addColorStop(1, '#d9ceb6');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x0 + w / 2, y, 9, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    // purl ridges either side of the panel
+    ctx.fillStyle = 'rgba(120,100,70,0.22)';
+    ctx.fillRect(x0 - 3, 0, 3, H); ctx.fillRect(x0 + w, 0, 3, H);
+    ctx.restore();
+  };
+  const layout = [['bobble', 30], ['cable', 70], ['diamond', 110], ['cable', 70], ['bobble', 30], ['cable', 70], ['diamond', 110], ['cable', 70]];
+  let x = 10;
+  for (const [kind, w] of layout) { panel(x, w, kind); x += w + 8; }
+  vignette(ctx, '#6a5a3a', 0.25, 0.4);
+}
+
+// ------------------------------------------------------------------ London: buses, phone boxes and cabs
+
+function bus(ctx, x, y) {
+  ctx.fillStyle = '#c8282e';
+  roundRect(ctx, x, y, 92, 58, 7); ctx.fill();
+  ctx.fillStyle = '#e8e2d6';
+  for (let i = 0; i < 4; i++) { ctx.fillRect(x + 8 + i * 20, y + 8, 15, 12); ctx.fillRect(x + 8 + i * 20, y + 30, 15, 12); }
+  ctx.fillStyle = '#7a1418'; ctx.fillRect(x, y + 24, 92, 3);
+  ellipse(ctx, x + 20, y + 58, 7, 7, 0, '#2b2522'); ellipse(ctx, x + 72, y + 58, 7, 7, 0, '#2b2522');
+  ellipse(ctx, x + 20, y + 58, 3, 3, 0, '#8a857c'); ellipse(ctx, x + 72, y + 58, 3, 3, 0, '#8a857c');
+}
+
+function phoneBox(ctx, x, y) {
+  ctx.fillStyle = '#c8282e';
+  ctx.beginPath(); ctx.moveTo(x, y + 12); ctx.quadraticCurveTo(x + 15, y, x + 30, y + 12); ctx.lineTo(x + 30, y + 72); ctx.lineTo(x, y + 72); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#2b2522'; ctx.fillRect(x + 4, y + 14, 22, 5);
+  ctx.fillStyle = '#e8e2d6';
+  for (let j = 0; j < 3; j++) for (let i = 0; i < 2; i++) ctx.fillRect(x + 6 + i * 10, y + 24 + j * 12, 8, 10);
+}
+
+function cab(ctx, x, y) {
+  ctx.fillStyle = '#2b2522';
+  ctx.beginPath(); ctx.moveTo(x, y + 30); ctx.lineTo(x + 6, y + 14); ctx.quadraticCurveTo(x + 20, y, x + 44, y + 2); ctx.quadraticCurveTo(x + 60, y + 4, x + 64, y + 16); ctx.lineTo(x + 72, y + 20); ctx.lineTo(x + 72, y + 34); ctx.lineTo(x, y + 34); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#c9d6e0'; ctx.fillRect(x + 14, y + 8, 16, 10); ctx.fillRect(x + 34, y + 8, 18, 10);
+  ctx.fillStyle = '#f2c14e'; ctx.fillRect(x + 30, y - 2, 10, 4);
+  ellipse(ctx, x + 16, y + 34, 6, 6, 0, '#14100e'); ellipse(ctx, x + 56, y + 34, 6, 6, 0, '#14100e');
+}
+
+function roundRect(ctx, x, y, w, h, rad) {
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
+
+function london(ctx, r) {
+  fill(ctx, '#f3ecdf');
+  weave(ctx, r, 0.6);
+  for (let y = 40, row = 0; y < H + 40; y += 120, row++) {
+    for (let x = row % 2 ? 70 : -10; x < W + 60; x += 230) {
+      const k = (row + Math.round(x / 230)) % 3;
+      if (k === 0) bus(ctx, x, y);
+      else if (k === 1) { phoneBox(ctx, x + 20, y - 8); cab(ctx, x + 70, y + 30); }
+      else cab(ctx, x + 10, y + 24);
+      // little umbrellas & hearts between
+      ctx.fillStyle = 'rgba(31,47,85,0.55)';
+      ctx.font = '16px serif';
+      ctx.fillText(row % 2 ? '☂' : '♥', x + 150, y + 80);
+    }
+  }
+  vignette(ctx, '#5a4a3a', 0.22, 0.4);
+}
+
+export const WORLD_DRAW = { aegean, lemons, swiss, kalocsa, wycinanki, nouveau, sahovnica, breton, sardines, nordic, boho, llengues, nyhavn, aran, london };
