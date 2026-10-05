@@ -101,7 +101,7 @@ function compA({ slot, scrap, tape, pressed, eph, note, hand }, d) {
     scrap(d.paper, 20, 540, 230, 260, -2, 'trbl', { oy: 540 }),
     scrap(alt, 470, 600, 160, 220, 4),
     hand(d.title, 30, 70, 480, -8, 100, d.titleFont, d.ink),
-    hand(d.subtitle, 150, 190, 300, -6, 26, 'Nothing You Could Do'),
+    hand(d.subtitle, 140, 190, 400, -6, 24, 'Nothing You Could Do'),
     eph('stamp', 468, 36, 7, d.stamp),
     slot('border', 90, 255, 250, 330, -3),
     tape(120, 240, 90, -22),
@@ -150,10 +150,10 @@ function compB({ slot, scrap, tape, pressed, eph, note, hand }, d) {
     eph('ticket', 640, 430, -4, d.ticket),
     eph('label', 930, 440, 5, d.label),
     eph('postmark', 930, 585, -8, d.postmark),
-    note(d.notes[1], 660, 575, 200, 3),
+    note(d.notes[1], 690, 565, 200, 3),
     hand(d.notes[2], 880, 700, 280, -2, 26),
     pressed(f1, 1085, 590, 180, 12),
-    pressed(f2, 590, 620, 160, -20),
+    pressed(f2, 585, 660, 140, -20),
   ];
 }
 
