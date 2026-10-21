@@ -12,6 +12,7 @@ import { LAYOUTS, buildLayout } from './layouts.js';
 import { PRESSED, pressed, pressedSize, pressedThumb, loadPressed } from './pressed.js';
 import { DESTINATIONS, destination } from './destinations.js';
 import { DOODLES, doodle, renderDoodle, doodleThumb } from './doodles.js';
+import { BLURB_8x10, makePrinter, planPages, estimateSpine } from './print.js';
 import {
   COVER_GROUPS, STITCHES, CORNERS, CLOSURES, THREAD_COLORS, CLOSURE_COLORS, COVER_PRESETS,
   coverStyle, renderCoverUnder, renderCoverOver,
@@ -42,6 +43,10 @@ const imageCache = new Map();
 const pending = new Set();
 
 let stage, bgLayer, itemLayer, decoLayer, uiLayer, tr;
+
+// Pixel density used when rasterising items (2 on screen, higher while rendering print pages).
+let RES = 2;
+const setRes = (r) => { const prev = RES; RES = r; return prev; };
 
 const spread = () => state.book.spreads[state.idx];
 const spreadWidth = (sp = spread()) => sp.pages.length * PAGE_W;
@@ -152,7 +157,7 @@ function buildNode(item) {
 }
 
 function photoRes(item) {
-  return clamp(2 * Math.max(item.scaleX || 1, item.scaleY || 1), 2, 4);
+  return clamp(RES * Math.max(item.scaleX || 1, item.scaleY || 1), RES, RES * 2);
 }
 
 function buildPhoto(item, g) {
@@ -200,10 +205,10 @@ function buildText(item, g) {
   let h = Math.max(t.height(), item.fontSize * 1.25) + pt + pb;
   if (item.style === 'sticky') h = Math.max(h, w * 0.92);
   if (!['plain', 'foil', 'neon'].includes(item.style)) {
-    const { canvas, m } = renderNoteBg(item, w, h, 2);
+    const { canvas, m } = renderNoteBg(item, w, h, RES);
     if (isStamp) distress(canvas, item.id, 0.35);
     g.add(new K.Image({
-      name: 'bg', image: canvas, x: -m, y: -m, width: canvas.width / 2, height: canvas.height / 2,
+      name: 'bg', image: canvas, x: -m, y: -m, width: canvas.width / RES, height: canvas.height / RES,
       ...(isStamp ? {} : item.style === 'label' ? SOFT_SHADOW : SHADOW),
       opacity: isStamp ? 0.85 : 1,
     }));
@@ -216,13 +221,13 @@ function buildText(item, g) {
 }
 
 function buildScrap(item, g) {
-  const { canvas, m } = renderScrap(item, 2);
-  g.add(new K.Image({ image: canvas, x: -m, y: -m, width: canvas.width / 2, height: canvas.height / 2, ...SOFT_SHADOW, shadowOpacity: 0.3 }));
+  const { canvas, m } = renderScrap(item, RES);
+  g.add(new K.Image({ image: canvas, x: -m, y: -m, width: canvas.width / RES, height: canvas.height / RES, ...SOFT_SHADOW, shadowOpacity: 0.3 }));
   g.setAttrs({ boxW: item.w, boxH: item.h });
 }
 
 function buildBotanical(item, g) {
-  const { canvas, W, H, pad } = renderBotanical(item, 2);
+  const { canvas, W, H, pad } = renderBotanical(item, RES);
   g.add(new K.Image({ image: canvas, x: -pad, y: -pad, width: W, height: H, ...SOFT_SHADOW, shadowBlur: 6, shadowOpacity: 0.35 }));
   g.setAttrs({ boxW: W - pad * 2, boxH: H - pad * 2 });
 }
@@ -238,14 +243,14 @@ function buildPressed(item, g) {
 }
 
 function buildDoodle(item, g) {
-  const res = clamp(2 * Math.max(item.scaleX || 1, item.scaleY || 1), 2, 4);
+  const res = clamp(RES * Math.max(item.scaleX || 1, item.scaleY || 1), RES, RES * 2);
   const { canvas, W, H, pad } = renderDoodle(item, res);
   g.add(new K.Image({ image: canvas, x: -pad, y: -pad, width: W, height: H, ...SOFT_SHADOW, shadowBlur: 6, shadowOpacity: 0.35 }));
   g.setAttrs({ boxW: W - pad * 2, boxH: H - pad * 2 });
 }
 
 function buildEphemera(item, g) {
-  const { canvas, W, H } = renderEphemera(item, 2);
+  const { canvas, W, H } = renderEphemera(item, RES);
   const flat = item.kind === 'postmark';
   g.add(new K.Image({ image: canvas, width: W, height: H, ...(flat ? { opacity: 0.8 } : SOFT_SHADOW) }));
   if (flat) g.add(new K.Rect({ width: W, height: H, fill: 'rgba(0,0,0,0)' }));
@@ -253,7 +258,7 @@ function buildEphemera(item, g) {
 }
 
 function buildTape(item, g) {
-  const c = renderTape(item, 2);
+  const c = renderTape(item, RES);
   g.add(new K.Image({ image: c, width: item.w, height: item.h, ...SOFT_SHADOW, shadowOpacity: 0.15 }));
   g.setAttrs({ boxW: item.w, boxH: item.h });
 }
@@ -278,7 +283,7 @@ function buildDrawing(item, g) {
 
 function buildSticker(item, g) {
   if (item.look && item.look !== 'plain') {
-    const { canvas, W, H } = renderSticker(item);
+    const { canvas, W, H } = renderSticker(item, RES);
     g.add(new K.Image({ image: canvas, width: W, height: H, ...SOFT_SHADOW }));
     g.setAttrs({ boxW: W, boxH: H });
     return;
@@ -356,8 +361,99 @@ function renderSpread() {
   itemLayer.batchDraw();
 
   $('#book').classList.toggle('is-cover', !!sp.cover);
+  drawGuides();
   fit();
   updatePager();
+}
+
+// Print guides for an 8×10 book: keep text out of the top/bottom 0.25 in and away from the binding.
+function drawGuides() {
+  uiLayer.findOne('.guides')?.destroy();
+  if (!state.printGuides) return;
+  const sp = spread();
+  const g = new K.Group({ name: 'guides', listening: false });
+  const safe = 20; // 0.25 in
+  const line = (x1, y1, x2, y2) => g.add(new K.Line({ points: [x1, y1, x2, y2], stroke: '#d0405a', strokeWidth: 1.5, dash: [8, 6], opacity: 0.8 }));
+  const w = spreadWidth(sp);
+  line(0, safe, w, safe);
+  line(0, PAGE_H - safe, w, PAGE_H - safe);
+  if (!sp.cover) {
+    const gutter = 40; // 0.5 in each side of the binding
+    g.add(new K.Rect({ x: PAGE_W - gutter, y: 0, width: gutter * 2, height: PAGE_H, fill: 'rgba(208,64,90,0.08)' }));
+    line(PAGE_W - gutter, 0, PAGE_W - gutter, PAGE_H);
+    line(PAGE_W + gutter, 0, PAGE_W + gutter, PAGE_H);
+    g.add(new K.Text({ x: PAGE_W - gutter + 4, y: PAGE_H / 2 + 70, text: 'binding — keep text out', fontSize: 13, fill: '#d0405a', rotation: -90, fontFamily: 'Patrick Hand, sans-serif' }));
+  }
+  g.add(new K.Text({ x: 8, y: 4, text: 'print guides: keep text inside the dashed lines', fontSize: 12, fill: '#d0405a', fontFamily: 'Patrick Hand, sans-serif' }));
+  uiLayer.add(g);
+  g.moveToBottom();
+  uiLayer.batchDraw();
+}
+
+// ------------------------------------------------------------------ print book (Blurb)
+
+const printer = makePrinter({
+  buildNode, settle, setRes,
+  onProgress: (msg) => { const p = $('#printProgress'); if (p) p.textContent = msg; },
+});
+
+function openPrintDialog() {
+  const dlg = $('#printDialog');
+  const plan = planPages(state.book, { titlePage: state.printTitlePage !== false });
+  const spineDefault = state.book.printSpine ?? estimateSpine(plan.pages.length);
+  dlg.innerHTML = '';
+  const coverW = (sp) => (BLURB_8x10.trimW * 2 + sp + BLURB_8x10.bleed * 2).toFixed(3);
+  const busy = (on) => dlg.querySelectorAll('button, input').forEach((b) => { if (!b.classList.contains('close-x')) b.disabled = on; });
+  const run = async (fn) => {
+    busy(true);
+    try { await fn(); } catch (err) { console.error(err); $('#printProgress').textContent = 'Something went wrong: ' + err.message; }
+    finally { busy(false); }
+  };
+  const spineInput = el('input', { type: 'number', min: '0.05', max: '3', step: '0.001', value: spineDefault, class: 'text-input num', id: 'spineIn' });
+  const wInput = el('input', { type: 'number', step: '0.001', value: state.book.printCoverW ?? coverW(+spineDefault), class: 'text-input num', id: 'coverW' });
+  const hInput = el('input', { type: 'number', step: '0.001', value: state.book.printCoverH ?? (BLURB_8x10.trimH + BLURB_8x10.bleed * 2).toFixed(3), class: 'text-input num', id: 'coverH' });
+  spineInput.addEventListener('input', () => { wInput.value = coverW(+spineInput.value || 0); });
+  const titleBox = el('input', { type: 'checkbox', checked: state.printTitlePage !== false, onchange: (e) => { state.printTitlePage = e.target.checked; openPrintDialog(); } });
+  const guidesBox = el('input', { type: 'checkbox', checked: !!state.printGuides, onchange: (e) => { state.printGuides = e.target.checked; drawGuides(); } });
+
+  dlg.append(
+    el('div', { class: 'print-head' }, el('h2', {}, 'Print your book'),
+      el('button', { class: 'icon-btn close-x', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
+    el('p', { class: 'print-format' }, `${BLURB_8x10.name} · 300 dpi · page 8.125 × 10.25 in with bleed`),
+    el('div', { class: 'print-summary' },
+      el('p', {}, el('b', {}, `${plan.pages.length} pages`), ` — ${state.book.spreads.length - 1} two-page spreads, ${state.printTitlePage !== false ? 'a title page' : 'a blank first page'} and a closing page` +
+        (plan.padding ? `, plus ${plan.padding} blank pages because Blurb needs at least ${BLURB_8x10.minPages}.` : '.')),
+      plan.padding ? el('p', { class: 'hint' }, `Tip: add ${Math.ceil(plan.padding / 2)} more spread${plan.padding > 2 ? 's' : ''} (+ at the top) to use those pages instead.`) : null),
+    el('label', { class: 'check' }, titleBox, ' Start with a title page (otherwise a blank page)'),
+    el('label', { class: 'check' }, guidesBox, ' Show print guides while editing'),
+    el('h3', {}, '1 · Inside pages'),
+    el('button', { class: 'btn primary', onclick: () => run(async () => {
+      const { pdf } = await printer.interior(state.book, { titlePage: state.printTitlePage !== false });
+      downloadBlob(pdf, `${slug(state.book.title)}-blurb-8x10-interior.pdf`);
+      $('#printProgress').textContent = 'Inside pages PDF downloaded ✓';
+    }) }, 'Download inside pages PDF'),
+    el('h3', {}, '2 · Cover'),
+    el('p', { class: 'hint' }, `The spine width depends on your page count (${plan.pages.length}) and paper. In Blurb's book-size calculator choose Photo Book → Standard Portrait → Softcover and your paper, then copy the spine width and full cover size from its Specifications here.`),
+    el('div', { class: 'print-fields' },
+      el('label', {}, 'Spine width (in)', spineInput),
+      el('label', {}, 'Cover width (in)', wInput),
+      el('label', {}, 'Cover height (in)', hInput)),
+    el('button', { class: 'btn primary', onclick: () => run(async () => {
+      const spineIn = +spineInput.value, widthIn = +wInput.value, heightIn = +hInput.value;
+      if (!(spineIn > 0 && widthIn > 16 && heightIn >= 10)) throw new Error('please check the cover numbers');
+      state.book.printSpine = spineIn; state.book.printCoverW = widthIn; state.book.printCoverH = heightIn; save();
+      const pdf = await printer.cover(state.book, { spineIn, widthIn, heightIn });
+      downloadBlob(pdf, `${slug(state.book.title)}-blurb-8x10-cover.pdf`);
+      $('#printProgress').textContent = 'Cover PDF downloaded ✓';
+    }) }, 'Download cover PDF'),
+    el('p', { id: 'printProgress', class: 'print-progress', 'aria-live': 'polite' }),
+    el('h3', {}, '3 · Upload to Blurb'),
+    el('ol', { class: 'print-steps' },
+      el('li', {}, 'On Blurb choose PDF to Book → Photo Book → Standard Portrait 8 × 10 in → Softcover, and your paper.'),
+      el('li', {}, 'Upload the inside pages PDF, then the cover PDF.'),
+      el('li', {}, 'Check Blurb\'s preview — especially that nothing important sits in the binding.')),
+  );
+  if (!dlg.open) dlg.showModal();
 }
 
 function fit() {
@@ -1447,7 +1543,10 @@ async function exportPNG() {
   syncTransformer();
   renderPanel();
   await settle();
+  const guides = uiLayer.findOne('.guides');
+  guides?.hide();
   const blob = await stage.toBlob({ pixelRatio: 2 / stage.scaleX(), mimeType: 'image/png' });
+  guides?.show();
   const name = `${slug(state.book.title)}-${spread().cover ? 'cover' : 'pages-' + (state.idx * 2 - 1) + '-' + state.idx * 2}.png`;
   downloadBlob(blob, name);
 }
@@ -1561,6 +1660,7 @@ function wireUI() {
     if (!a) return;
     closeMenu();
     if (a === 'png') exportPNG();
+    if (a === 'print') openPrintDialog();
     if (a === 'backup') exportBackup();
     if (a === 'restore') $('#backupInput').click();
     if (a === 'help') $('#helpDialog').showModal();

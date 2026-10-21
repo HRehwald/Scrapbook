@@ -40,6 +40,7 @@
           <button class="icon-btn" id="menuBtn" data-icon="menu" title="More" aria-label="More options" aria-haspopup="true" aria-expanded="false"></button>
           <div class="menu" id="menu" role="menu" hidden>
             <button role="menuitem" data-action="png"><span data-icon="download"></span>Download this page as picture</button>
+            <button role="menuitem" data-action="print"><span data-icon="pages"></span>Print as a book (Blurb PDF)…</button>
             <button role="menuitem" data-action="backup"><span data-icon="save"></span>Save backup file</button>
             <button role="menuitem" data-action="restore"><span data-icon="upload"></span>Open backup file…</button>
             <hr>
@@ -74,6 +75,8 @@
 
     <div class="popover" id="popover" hidden></div>
   </div>
+
+  <dialog class="card-dialog print-dialog" id="printDialog"></dialog>
 
   <dialog class="card-dialog" id="helpDialog">
     <form method="dialog">

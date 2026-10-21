@@ -30,7 +30,7 @@ export { COVERS };
 
 const cache = new Map();
 
-export function paperCanvas(id, res = 2) {
+export function paperCanvas(id, res = 2, keep = true) {
   const key = id + '@' + res;
   if (cache.has(key)) return cache.get(key);
   const c = makeCanvas(PAGE_W * res, PAGE_H * res);
@@ -41,7 +41,7 @@ export function paperCanvas(id, res = 2) {
   // Grain in device pixels for crispness.
   const amt = GRAIN[id] ?? COVER_GRAIN[id] ?? WORLD_GRAIN[id] ?? 10;
   if (amt) grain(ctx, c.width, c.height, amt, rng(id + 'g'));
-  cache.set(key, c);
+  if (keep) cache.set(key, c); // big print-resolution papers are not kept in memory
   return c;
 }
 
