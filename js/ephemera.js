@@ -9,15 +9,26 @@ export const EPHEMERA = [
   { id: 'ticket', name: 'Ticket stub', w: 230, h: 116, text: 'SAGRADA FAMÍLIA', text2: 'ENTRADA · ADMIT ONE', color: '#e8b4a6', labels: ['Title', 'Small print'] },
   { id: 'label', name: 'Market label', w: 210, h: 96, text: 'MERCAT DE LA BOQUERIA', text2: 'Nº 178264', color: '#efe3c6', labels: ['Name', 'Number'] },
   { id: 'airmail', name: 'Airmail strip', w: 240, h: 44, text: 'PAR AVION · BY AIR MAIL', text2: '', color: '#fdf9ef', labels: ['Text'] },
+  { id: 'streetsign', name: 'Street sign', w: 250, h: 112, text: 'RUE DE RIVOLI', text2: '1er Arrt', color: '#1f4a8a', labels: ['Street', 'District'] },
+  { id: 'wristband', name: 'Wristband', w: 320, h: 42, text: 'OPEN AIR · IBIZA', text2: '', color: '#ff4fa3', labels: ['Text'] },
   { id: 'postcard', name: 'Postcard', w: 280, h: 180, text: 'Wish you were here!\nLove, us ♡', text2: 'BARCELONA', color: '#f4ecd8', labels: ['Message', 'Heading'] },
 ];
-export const EPHEMERA_COLORS = ['#e8d9b8', '#efe3c6', '#fdf9ef', '#e8b4a6', '#c9d6b2', '#a9c6d8', '#f1d58a', '#d9c2e0', '#2b2118', '#1f3a5f', '#9e2a2b', '#2f5d3a'];
+export const EPHEMERA_COLORS = ['#e8d9b8', '#efe3c6', '#fdf9ef', '#e8b4a6', '#c9d6b2', '#a9c6d8', '#f1d58a', '#d9c2e0', '#2b2118', '#1f3a5f', '#1f4a8a', '#9e2a2b', '#2f5d3a', '#ff4fa3', '#3de3ff', '#b26bff', '#ffe14d'];
 export const STAMP_MOTIFS = BOTANICALS.map((b) => ({ id: b.id, name: b.name }));
 
 export const ephemeron = (id) => EPHEMERA.find((e) => e.id === id) || EPHEMERA[0];
 
 const INK = '#2b2118';
 const TYPE = '"Special Elite", "Courier New", monospace';
+const SANS = '"Arial Narrow", "Helvetica Neue", Arial, sans-serif';
+
+function roundRect(ctx, x, y, w, h, rad) {
+  ctx.beginPath();
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
 const SERIF = '"IM Fell English", Georgia, serif';
 
 function fitText(ctx, text, maxW, size, font) {
@@ -167,6 +178,57 @@ export function renderEphemera(item, res = 2) {
       fitText(ctx, text, W - 30, 14, TYPE);
       ctx.fillText(text, W / 2, H / 2 + 1);
       break;
+    }
+    case 'streetsign': {
+      // Parisian enamel street plate: green rim, blue field, white lettering
+      ctx.fillStyle = '#2f6b4a';
+      roundRect(ctx, 0, 0, W, H, 10); ctx.fill();
+      ctx.fillStyle = color;
+      roundRect(ctx, 6, 6, W - 12, H - 12, 7); ctx.fill();
+      ctx.strokeStyle = '#f4f1ea'; ctx.lineWidth = 2.5;
+      roundRect(ctx, 12, 12, W - 24, H - 24, 5); ctx.stroke();
+      ctx.fillStyle = '#f4f1ea';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      fitText(ctx, text2, W - 60, 13, SANS);
+      ctx.fillText(text2, W / 2, 28);
+      ctx.fillRect(W / 2 - 50, 38, 100, 1.5);
+      const words = text.split(' ');
+      const twoLines = text.length > 14 && words.length > 1;
+      const lines = twoLines ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [text];
+      lines.forEach((ln, i) => { fitText(ctx, ln, W - 40, twoLines ? 22 : 30, SANS); ctx.fillText(ln, W / 2, (twoLines ? 58 : 70) + i * 24); });
+      // enamel sheen and a few chips
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, 'rgba(255,255,255,0.18)'); g.addColorStop(0.4, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; roundRect(ctx, 0, 0, W, H, 10); ctx.fill();
+      ctx.fillStyle = '#2b2522';
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(r() * W, r() < 0.5 ? 3 + r() * 6 : H - 3 - r() * 6, 1 + r() * 2.5, 0, Math.PI * 2); ctx.fill(); }
+      return { canvas: c, W, H };
+    }
+    case 'wristband': {
+      roundRect(ctx, 0, 6, W, H - 12, 6);
+      const g = ctx.createLinearGradient(0, 6, 0, H - 6);
+      g.addColorStop(0, shade(color, 30)); g.addColorStop(0.5, color); g.addColorStop(1, shade(color, -35));
+      ctx.fillStyle = g; ctx.fill();
+      ctx.save(); ctx.clip();
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      for (let x = -H; x < W; x += 16) { ctx.beginPath(); ctx.moveTo(x, H); ctx.lineTo(x + 8, H); ctx.lineTo(x + 8 + H, 0); ctx.lineTo(x + H, 0); ctx.closePath(); ctx.fill(); }
+      ctx.restore();
+      ctx.fillStyle = '#ffffff';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold 14px ${SANS}`;
+      const word = text.toUpperCase() + '  ✦  ';
+      const ww = ctx.measureText(word).width || 80;
+      ctx.save(); ctx.beginPath(); ctx.rect(46, 0, W - 52, H); ctx.clip();
+      for (let x = 50; x < W; x += ww) ctx.fillText(word, x, H / 2 + 1);
+      ctx.restore();
+      // plastic snap
+      ctx.fillStyle = shade(color, -50); roundRect(ctx, 6, 8, 34, H - 16, 4); ctx.fill();
+      for (const dx of [16, 30]) {
+        const sg = ctx.createRadialGradient(dx - 1, H / 2 - 1, 0.5, dx, H / 2, 5);
+        sg.addColorStop(0, '#ffffff'); sg.addColorStop(1, shade(color, -20));
+        ctx.fillStyle = sg; ctx.beginPath(); ctx.arc(dx, H / 2, 4.5, 0, Math.PI * 2); ctx.fill();
+      }
+      return { canvas: c, W, H };
     }
     case 'postcard': {
       ctx.fillStyle = color;

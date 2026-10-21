@@ -65,7 +65,10 @@ export const NOTE_STYLES = [
   { id: 'bookplate', name: 'Bookplate', pad: [26, 34, 26, 34], bg: '#f6ecd6' },
   { id: 'plate', name: 'Brass plate', pad: [14, 42, 14, 42] },
   { id: 'foil', name: 'Gold foil', pad: [4, 4, 4, 4] },
+  { id: 'neon', name: 'Neon sign', pad: [14, 14, 14, 14] },
 ];
+
+export const NEONS = ['#ff4fa3', '#3de3ff', '#b26bff', '#ffe14d', '#59ff8a', '#ff7a3d', '#ffffff'];
 
 export const METALS = ['#c9a24a', '#d9b46a', '#b8733a', '#c98b7a', '#a7adb3', '#fdf9ef'];
 export const PATCH_COLORS = ['#f3dc8c', '#e8b4a6', '#c9d6b2', '#a9c6d8', '#d9c2e0', '#fdf9ef', '#9e2a2b', '#1f3a5f', '#2f5d3a', '#2b2118'];

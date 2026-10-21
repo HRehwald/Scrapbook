@@ -3,7 +3,7 @@ import { uid, clamp, debounce, downloadBlob, slug, makeCanvas, shade } from './u
 import { PAGE_W, PAGE_H, PAPERS, COVERS, paperCanvas, paperThumb } from './papers.js';
 import {
   FONTS, INKS, NOTE_COLORS, TAPE_COLORS, FRAMES, FILTERS, CROPS, NOTE_STYLES,
-  METALS, PATCH_COLORS, STICKER_LOOKS,
+  METALS, NEONS, PATCH_COLORS, STICKER_LOOKS,
   noteStyle, renderPhoto, renderTape, renderNoteBg, distress, renderSticker, renderScrap, SCRAP_EDGES,
 } from './render.js';
 import { BOTANICALS, botanical, renderBotanical, botanicalThumb } from './botanicals.js';
@@ -11,6 +11,7 @@ import { EPHEMERA, EPHEMERA_COLORS, STAMP_MOTIFS, ephemeron, renderEphemera } fr
 import { LAYOUTS, buildLayout } from './layouts.js';
 import { PRESSED, pressed, pressedSize, pressedThumb, loadPressed } from './pressed.js';
 import { DESTINATIONS, destination } from './destinations.js';
+import { DOODLES, doodle, renderDoodle, doodleThumb } from './doodles.js';
 import {
   COVER_GROUPS, STITCHES, CORNERS, CLOSURES, THREAD_COLORS, CLOSURE_COLORS, COVER_PRESETS,
   coverStyle, renderCoverUnder, renderCoverOver,
@@ -144,7 +145,7 @@ function buildNode(item) {
     scaleX: item.scaleX || 1, scaleY: item.scaleY || 1,
     draggable: state.tool === 'select',
   });
-  const builders = { photo: buildPhoto, text: buildText, tape: buildTape, drawing: buildDrawing, sticker: buildSticker, scrap: buildScrap, botanical: buildBotanical, ephemera: buildEphemera, pressed: buildPressed };
+  const builders = { photo: buildPhoto, text: buildText, tape: buildTape, drawing: buildDrawing, sticker: buildSticker, scrap: buildScrap, botanical: buildBotanical, ephemera: buildEphemera, pressed: buildPressed, doodle: buildDoodle };
   (builders[item.type] || (() => {}))(item, g);
   attachEvents(g);
   return g;
@@ -187,13 +188,18 @@ function buildText(item, g) {
       fillLinearGradientColorStops: [0, shade(c, 70), 0.45, c, 0.55, shade(c, -30), 1, shade(c, 45)],
       shadowColor: '#000', shadowOpacity: 0.45, shadowBlur: 1.5, shadowOffsetX: 1, shadowOffsetY: 1.2,
     });
+  } else if (item.style === 'neon') {
+    t.setAttrs({
+      fill: shade(item.color, 110), shadowColor: item.color, shadowBlur: Math.max(10, item.fontSize * 0.45),
+      shadowOpacity: 1, shadowOffsetX: 0, shadowOffsetY: 0,
+    });
   } else if (item.style === 'plate') {
     t.setAttrs({ shadowColor: '#fff6d0', shadowOpacity: 0.7, shadowBlur: 0, shadowOffsetX: 0.8, shadowOffsetY: 1 });
   }
   let w = item.width + pl + pr;
   let h = Math.max(t.height(), item.fontSize * 1.25) + pt + pb;
   if (item.style === 'sticky') h = Math.max(h, w * 0.92);
-  if (item.style !== 'plain' && item.style !== 'foil') {
+  if (!['plain', 'foil', 'neon'].includes(item.style)) {
     const { canvas, m } = renderNoteBg(item, w, h, 2);
     if (isStamp) distress(canvas, item.id, 0.35);
     g.add(new K.Image({
@@ -204,6 +210,7 @@ function buildText(item, g) {
   } else {
     g.add(new K.Rect({ width: w, height: h, fill: 'rgba(0,0,0,0)' }));
   }
+  if (item.style === 'neon') g.add(t.clone({ name: 'glow', fill: item.color, shadowBlur: item.fontSize, opacity: 0.8, listening: false }));
   g.add(t);
   g.setAttrs({ boxW: w, boxH: h });
 }
@@ -228,6 +235,13 @@ function buildPressed(item, g) {
   g.add(kimg);
   g.setAttrs({ boxW: item.w, boxH: item.h });
   track(loadPressed(item.asset).then((img) => { kimg.image(img); kimg.getLayer()?.batchDraw(); }, (err) => console.warn(err)));
+}
+
+function buildDoodle(item, g) {
+  const res = clamp(2 * Math.max(item.scaleX || 1, item.scaleY || 1), 2, 4);
+  const { canvas, W, H, pad } = renderDoodle(item, res);
+  g.add(new K.Image({ image: canvas, x: -pad, y: -pad, width: W, height: H, ...SOFT_SHADOW, shadowBlur: 6, shadowOpacity: 0.35 }));
+  g.setAttrs({ boxW: W - pad * 2, boxH: H - pad * 2 });
 }
 
 function buildEphemera(item, g) {
@@ -409,7 +423,7 @@ function attachEvents(g) {
       it.w = Math.max(30, it.w * it.scaleX / it.scaleY);
       it.scaleX = it.scaleY;
       rebuild(it);
-    } else if (it.type === 'photo' && photoRes(it) !== oldRes) {
+    } else if ((it.type === 'photo' && photoRes(it) !== oldRes) || it.type === 'doodle') {
       rebuild(it);
     }
     commit();
@@ -508,6 +522,7 @@ function editText(item) {
   select(item.id);
   tr.nodes([]);
   t.hide();
+  g.findOne('.glow')?.hide();
   itemLayer.batchDraw();
   const abs = t.getAbsoluteTransform().decompose();
   const ta = document.createElement('textarea');
@@ -738,13 +753,20 @@ function addPressed(asset, height = 200) {
   addItem({ id: uid(), type: 'pressed', asset, ...size, flip: false, ...placement(size.w, size.h, 120) });
 }
 
+function addDoodle(kind, height) {
+  const def = doodle(kind);
+  const s = (height || Math.min(200, def.h)) / def.h;
+  addItem({ id: uid(), type: 'doodle', kind, flip: false, ...placement(def.w * s, def.h * s, 120), scaleX: s, scaleY: s });
+}
+
 function addKitPiece(d, piece) {
   const e = (kind, extra) => {
     const def = ephemeron(kind);
     addItem({ id: uid(), type: 'ephemera', kind, ...extra, ...placement(def.w, def.h, 120) });
   };
   if (piece === 'title') {
-    addItem(textItem({ style: 'plain', text: d.title, font: d.titleFont, fontSize: 90, color: d.ink, width: 480, ...placement(480, 120, 60) }));
+    const neonTitle = d.comp === 'N';
+    addItem(textItem({ style: neonTitle ? 'neon' : 'plain', text: d.title, font: d.titleFont, fontSize: 90, color: d.ink, width: 480, align: neonTitle ? 'center' : 'left', ...placement(480, 120, 60) }));
   } else if (piece === 'subtitle') {
     addItem(textItem({ style: 'plain', text: d.subtitle, font: 'Nothing You Could Do', fontSize: 26, width: 320, ...placement(320, 40, 80) }));
   } else if (piece === 'note') {
@@ -757,6 +779,10 @@ function addKitPiece(d, piece) {
     addItem(it);
   } else if (['stamp', 'postmark', 'ticket', 'label'].includes(piece)) {
     e(piece, d[piece]);
+  } else if (piece === 'sign') {
+    e('streetsign', d.sign);
+  } else if (piece === 'wristband') {
+    e('wristband', { text: d.wristbands[0], color: '#ff4fa3' });
   }
 }
 
@@ -1028,10 +1054,20 @@ function openPopover(kind, refresh = false) {
     const kitBtn = (piece, label) => el('button', { class: 'chip', onclick: () => { closePopover(); addKitPiece(d, piece); } }, label);
     pop.appendChild(el('div', { class: 'chips kit-chips' },
       kitBtn('title', 'Title'), kitBtn('subtitle', 'Subtitle'), kitBtn('stamp', 'Stamp'), kitBtn('postmark', 'Postmark'),
-      kitBtn('ticket', 'Ticket'), kitBtn('label', 'Label'), kitBtn('note', 'Note'), kitBtn('paper', 'Paper scrap'), kitBtn('tape', 'Tape')));
+      kitBtn('ticket', 'Ticket'), kitBtn('label', 'Label'), kitBtn('note', 'Note'), kitBtn('paper', 'Paper scrap'), kitBtn('tape', 'Tape'),
+      d.sign ? kitBtn('sign', 'Street sign') : null, d.wristbands ? kitBtn('wristband', 'Wristband') : null));
     pop.appendChild(el('div', { class: 'pressed-grid kit-flowers' }, d.flowers.map((f) =>
       el('button', { title: pressed(f).name, 'aria-label': pressed(f).name, onclick: () => { closePopover(); addPressed(f); } },
         el('img', { src: pressedThumb(f), alt: '' })))));
+    if (d.doodles?.length) {
+      pop.appendChild(el('div', { class: 'pressed-grid kit-flowers' }, d.doodles.map((k) =>
+        el('button', { title: doodle(k).name, 'aria-label': doodle(k).name, onclick: () => { closePopover(); addDoodle(k); } },
+          el('img', { src: doodleThumb(k), alt: '' })))));
+    }
+    pop.insertAdjacentHTML('beforeend', '<h3>Illustrations</h3>');
+    pop.appendChild(el('div', { class: 'pressed-grid' }, DOODLES.map((x) =>
+      el('button', { title: x.name, 'aria-label': x.name, onclick: () => { closePopover(); addDoodle(x.id); } },
+        el('img', { src: doodleThumb(x.id), alt: '' })))));
     pop.insertAdjacentHTML('beforeend', '<h3>Pressed flowers</h3>');
     pop.appendChild(el('div', { class: 'pressed-grid' }, PRESSED.map((p) =>
       el('button', { title: p.name, 'aria-label': p.name, onclick: () => { closePopover(); addPressed(p.id); } },
@@ -1196,7 +1232,8 @@ function renderPanel() {
       section('Style', chips(NOTE_STYLES, it.style, (s) => {
         const patch = { style: s, bg: null };
         if (s === 'foil' && !METALS.includes(it.color)) patch.color = METALS[0];
-        if (s !== 'foil' && METALS.includes(it.color) && it.color !== '#fdf9ef') patch.color = '#2b2118';
+        if (s === 'neon' && !NEONS.includes(it.color)) patch.color = NEONS[0];
+        if (s !== 'foil' && s !== 'neon' && (METALS.includes(it.color) || NEONS.includes(it.color)) && it.color !== '#fdf9ef' && it.color !== '#ffffff') patch.color = '#2b2118';
         updateSelected(patch, { panel: true });
       })),
       section('Font', fontSelect(it.font, (f) => updateSelected({ font: f }, { panel: true }))),
@@ -1206,6 +1243,8 @@ function renderPanel() {
         el('button', { class: 'act' + (it.align === a ? ' on' : ''), 'aria-label': 'Align ' + a, html: icon(a), onclick: () => updateSelected({ align: a }, { panel: true }) })))),
       it.style === 'foil'
         ? section('Metal', swatches(METALS, it.color, (c) => updateSelected({ color: c }, { panel: true })))
+        : it.style === 'neon'
+        ? section('Neon colour', swatches(NEONS, it.color, (c) => updateSelected({ color: c }, { panel: true })))
         : section('Ink', swatches(INKS, it.color, (c) => updateSelected({ color: c }, { panel: true }))));
     if (st.bg) panel.append(section('Paper colour', swatches(NOTE_COLORS, it.bg || st.bg, (c) => updateSelected({ bg: c }, { panel: true }))));
     panel.append(actionRow());
@@ -1229,6 +1268,18 @@ function renderPanel() {
       range('Width', 40, 900, 5, Math.round(it.w), (v, done) => updateSelected({ w: v }, { commitNow: done })),
       range('Height', 40, 800, 5, Math.round(it.h), (v, done) => updateSelected({ h: v }, { commitNow: done })),
       el('p', { class: 'hint' }, 'Layer scraps under photos: use “Send to back” below.'),
+      actionRow());
+    return;
+  }
+
+  if (it.type === 'doodle') {
+    panel.append(panelHeader(doodle(it.kind).name),
+      section('Look', el('button', { class: 'btn', onclick: () => updateSelected({ flip: !it.flip }, { panel: true }), html: icon('flip') + 'Flip' })),
+      section('Swap for', el('div', { class: 'pressed-grid' }, DOODLES.map((x) =>
+        el('button', {
+          class: x.id === it.kind ? 'on' : '', title: x.name, 'aria-label': x.name,
+          onclick: () => updateSelected({ kind: x.id }, { panel: true }),
+        }, el('img', { src: doodleThumb(x.id), alt: '' }))))),
       actionRow());
     return;
   }
