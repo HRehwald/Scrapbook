@@ -1,6 +1,7 @@
 // Destination-themed papers, drawn procedurally at 600 × 800.
 import { fibres, rgba, shade } from './util.js';
 import { fill, vignette, blotches } from './papers.js';
+import { renderDoodle } from './doodles.js';
 
 const W = 600, H = 800;
 
@@ -20,10 +21,13 @@ export const WORLD_PAPERS = [
   { id: 'nyhavn', name: 'Nyhavn houses (Copenhagen)', swatch: '#e0a83a' },
   { id: 'aran', name: 'Aran knit (Ireland)', swatch: '#efe7d6' },
   { id: 'london', name: 'London town', swatch: '#c8282e' },
+  { id: 'neon', name: 'Neon night (Ibiza)', swatch: '#2a0f3a' },
+  { id: 'paris', name: 'Paris toile', swatch: '#a8323a' },
+  { id: 'pibiones', name: 'Pibiones weave (Sardinia)', swatch: '#a8322e' },
 ];
 
 export const WORLD_GRAIN = {
-  aegean: 12, lemons: 8, swiss: 14, kalocsa: 8, wycinanki: 8, nouveau: 12, sahovnica: 14, breton: 10, sardines: 8, nordic: 10, boho: 10, llengues: 8, nyhavn: 8, aran: 8, london: 8,
+  aegean: 12, lemons: 8, swiss: 14, kalocsa: 8, wycinanki: 8, nouveau: 12, sahovnica: 14, breton: 10, sardines: 8, nordic: 10, boho: 10, llengues: 8, nyhavn: 8, aran: 8, london: 8, neon: 8, paris: 8, pibiones: 12,
 };
 
 // ------------------------------------------------------------------ helpers
@@ -608,4 +612,113 @@ function london(ctx, r) {
   vignette(ctx, '#5a4a3a', 0.22, 0.4);
 }
 
-export const WORLD_DRAW = { aegean, lemons, swiss, kalocsa, wycinanki, nouveau, sahovnica, breton, sardines, nordic, boho, llengues, nyhavn, aran, london };
+// ------------------------------------------------------------------ Ibiza nights: neon on a night sky
+
+function glowLine(ctx, pts, color, width) {
+  ctx.save();
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const [w, a, blur] of [[width * 4, 0.18, 18], [width * 2, 0.45, 8], [width, 1, 0]]) {
+    ctx.strokeStyle = blur ? rgba(color, a) : '#ffffff';
+    ctx.shadowColor = color; ctx.shadowBlur = blur;
+    ctx.lineWidth = blur ? w : width * 0.6;
+    ctx.beginPath();
+    pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function neon(ctx, r) {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#120a22'); g.addColorStop(0.6, '#24103a'); g.addColorStop(1, '#3a1240');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // haze
+  for (const [x, y, rad, c] of [[120, 140, 260, '#ff4fa3'], [480, 520, 300, '#3de3ff'], [200, 700, 220, '#b26bff']]) {
+    const hz = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    hz.addColorStop(0, rgba(c, 0.22)); hz.addColorStop(1, rgba(c, 0));
+    ctx.fillStyle = hz; ctx.fillRect(0, 0, W, H);
+  }
+  // stars
+  for (let i = 0; i < 220; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.3 + r() * 0.6})`;
+    ctx.beginPath(); ctx.arc(r() * W, r() * H, r() * 1.2 + 0.2, 0, Math.PI * 2); ctx.fill();
+  }
+  // neon waves
+  const colors = ['#ff4fa3', '#3de3ff', '#b26bff'];
+  colors.forEach((c, k) => {
+    const pts = [];
+    const base = 560 + k * 46;
+    for (let x = -10; x <= W + 10; x += 10) pts.push([x, base + Math.sin(x / 70 + k) * 22]);
+    glowLine(ctx, pts, c, 3);
+  });
+  // sparkles
+  for (let i = 0; i < 24; i++) {
+    const x = r() * W, y = r() * 480, k = 3 + r() * 6, c = colors[Math.floor(r() * 3)];
+    ctx.save(); ctx.shadowColor = c; ctx.shadowBlur = 10; ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(x, y - k); ctx.lineTo(x + k * 0.25, y); ctx.lineTo(x, y + k); ctx.lineTo(x - k * 0.25, y); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x - k, y); ctx.lineTo(x, y + k * 0.25); ctx.lineTo(x + k, y); ctx.lineTo(x, y - k * 0.25); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ------------------------------------------------------------------ Paris toile (red ink)
+
+function paris(ctx, r) {
+  fill(ctx, '#f4ecdf');
+  weave(ctx, r, 0.6);
+  const ink = '#a8323a';
+  const motifs = [['eiffel', 0.62], ['bicycle', 0.55], ['croissant', 0.55], ['macarons', 0.5], ['wine', 0.6]];
+  let k = 0;
+  for (let y = 10, row = 0; y < H + 80; y += 150, row++) {
+    for (let x = row % 2 ? 140 : 10; x < W + 80; x += 270) {
+      const [kind, s] = motifs[k++ % motifs.length];
+      const d = renderDoodle({ kind, id: 'toile-' + kind, tint: ink }, 1);
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(d.canvas, x, y, d.W * s, d.H * s);
+      ctx.restore();
+      ctx.fillStyle = rgba(ink, 0.8);
+      ctx.font = '22px "Pinyon Script", "Great Vibes", cursive';
+      if (row % 2 === 0) ctx.fillText('Paris', x + 150, y + 70);
+      ctx.font = '16px serif';
+      ctx.fillText('♥', x + 200, y + 120);
+      ctx.fillText('✿', x + 110, y + 135);
+    }
+  }
+  vignette(ctx, '#6e4b2a', 0.22, 0.4);
+}
+
+// ------------------------------------------------------------------ Sardinia: pibiones weave
+
+function pibiones(ctx, r) {
+  fill(ctx, '#efe4cf');
+  weave(ctx, r, 1.3);
+  const red = '#a8322e', dark = '#2b2522', ochre = '#d09a3a', teal = '#2f6f73';
+  const dot = (x, y, c) => {
+    const g = ctx.createRadialGradient(x - 1, y - 1, 0.5, x, y, 3.6);
+    g.addColorStop(0, shade(c, 40)); g.addColorStop(1, c);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 3.4, 0, Math.PI * 2); ctx.fill();
+  };
+  for (let y = 30; y < H; y += 190) {
+    // band of stepped diamonds
+    for (let cx = 40; cx < W + 40; cx += 100) {
+      for (let step = 0; step < 6; step++) {
+        const half = (6 - step) * 7;
+        ctx.fillStyle = step % 2 ? ochre : red;
+        ctx.fillRect(cx - half, y + 40 - 6 * (6 - step), half * 2, 6);
+        ctx.fillRect(cx - half, y + 40 + 6 * (5 - step), half * 2, 6);
+      }
+      ctx.fillStyle = dark; ctx.fillRect(cx - 4, y + 36, 8, 8);
+    }
+    // zig-zag band
+    ctx.strokeStyle = dark; ctx.lineWidth = 6; ctx.lineJoin = 'miter';
+    ctx.beginPath();
+    for (let x = 0, i = 0; x <= W; x += 20, i++) ctx.lineTo(x, y + 112 + (i % 2 ? -10 : 10));
+    ctx.stroke();
+    // raised grain dots ("pibiones")
+    for (let x = 10; x < W; x += 14) { dot(x, y + 140, teal); dot(x + 7, y + 152, ochre); }
+  }
+  vignette(ctx, '#5a3a1a', 0.22, 0.4);
+}
+
+export const WORLD_DRAW = { aegean, lemons, swiss, kalocsa, wycinanki, nouveau, sahovnica, breton, sardines, nordic, boho, llengues, nyhavn, aran, london, neon, paris, pibiones };

@@ -1,6 +1,7 @@
 // Ready-made spread layouts with empty photo slots. Coordinates are in spread space (1200 × 800).
 import { DESTINATIONS, destination } from './destinations.js';
 import { pressedSize } from './pressed.js';
+import { doodle as doodleDef } from './doodles.js';
 
 const base = { rotation: 0, scaleX: 1, scaleY: 1 };
 
@@ -25,13 +26,24 @@ export function helpers(uid, textItem) {
     textItem({ text, style, font, fontSize, width, x, y, rotation, color: '#2b2118' });
   h.hand = (text, x, y, width, rotation, fontSize = 24, font = 'La Belle Aurore', color = '#2b2118') =>
     textItem({ text, style: 'plain', font, fontSize, width, x, y, rotation, color });
+  h.neon = (text, x, y, width, rotation, fontSize = 40, font = 'Nothing You Could Do', color = '#ff4fa3') =>
+    textItem({ text, style: 'neon', font, fontSize, width, x, y, rotation, color, align: 'center' });
+  h.doodle = (kind, x, y, height, rotation = 0, flip = false) => {
+    const s = height / doodleDef(kind).h;
+    return { ...base, id: uid(), type: 'doodle', kind, flip, x, y, rotation, scaleX: s, scaleY: s };
+  };
   return h;
 }
 
 export function buildLayout(id, uid, textItem) {
   const h = helpers(uid, textItem);
   const d = destination(id);
-  if (d) return COMPOSE[d.comp](h, d);
+  if (d) {
+    const items = COMPOSE[d.comp](h, d);
+    // destination-specific illustrations, placed on top
+    for (const [kind, x, y, height, rot = 0, flip = false] of d.extras || []) items.push(h.doodle(kind, x, y, height, rot, flip));
+    return items;
+  }
   if (id === 'polaroids') return polaroids(h);
   return barcelona(h);
 }
@@ -182,4 +194,66 @@ function compC({ slot, scrap, tape, pressed, eph, note, hand }, d) {
   ];
 }
 
-const COMPOSE = { A: compA, B: compB, C: compC };
+// N — night out: neon writing on a night-sky spread
+function compN({ slot, tape, pressed, eph, note, neon, doodle }, d) {
+  const [f0, f1] = d.flowers;
+  return [
+    neon(d.title, 40, 40, 420, -6, 104, d.titleFont, '#ff4fa3'),
+    neon(d.subtitle, 230, 136, 260, -4, 34, 'Nothing You Could Do', '#3de3ff'),
+    doodle('discoball', 455, -8, 190),
+    slot('polaroid', 50, 250, 220, 220, -5),
+    slot('polaroid', 300, 285, 220, 220, 6),
+    eph('wristband', 30, 245, -9, { text: d.wristbands[0], color: '#ff4fa3' }),
+    eph('ticket', 290, 610, -5, d.ticket),
+    doodle('cocktail', 30, 585, 160, -8),
+    pressed(f0, 480, 560, 170, 14),
+    neon(d.notes[0], 110, 735, 380, -2, 30, 'Nothing You Could Do', '#ffe14d'),
+    doodle('vinyl', 625, 24, 140, -10),
+    slot('border', 815, 40, 300, 210, 3),
+    tape(830, 30, 80, -25, '#b26bff', 'plain'),
+    neon(d.notes[1], 618, 185, 185, -4, 26, 'Nothing You Could Do', '#3de3ff'),
+    slot('polaroid', 650, 330, 215, 215, -4),
+    slot('polaroid', 915, 360, 215, 215, 5),
+    eph('wristband', 860, 320, 14, { text: d.wristbands[1], color: '#3de3ff' }),
+    eph('postmark', 650, 650, -6, d.postmark),
+    eph('stamp', 1072, 655, 9, d.stamp),
+    pressed(f1, 1075, 185, 150, 12),
+    neon(d.notes[2], 800, 722, 240, -3, 28, 'Nothing You Could Do', '#ff4fa3'),
+  ];
+}
+
+// P — Paris: toile page, Eiffel Tower, street sign, café & métro ephemera
+function compP({ slot, scrap, tape, pressed, eph, note, hand, doodle }, d) {
+  const [f0, f1] = d.flowers;
+  return [
+    scrap('cream', 30, 36, 400, 170, -2),
+    hand(d.title, 60, 52, 340, -3, 110, d.titleFont, d.ink),
+    hand(d.subtitle, 110, 168, 300, -3, 26, 'Nothing You Could Do'),
+    doodle('eiffel', 440, 140, 380, 2),
+    slot('polaroid', 40, 255, 220, 220, -5),
+    tape(95, 240, 90, -8, '#3a5a9a', 'plain'),
+    eph('streetsign', 270, 205, 5, d.sign),
+    slot('deckle', 225, 480, 230, 175, 4),
+    tape(395, 470, 80, 25, '#c8323a', 'plain'),
+    doodle('macarons', 30, 585, 110, -6),
+    eph('ticket', 285, 672, -5, d.ticket),
+    doodle('croissant', 40, 705, 80, -12),
+    eph('label', 640, 28, -3, d.label),
+    doodle('bicycle', 905, 30, 120, 0),
+    slot('border', 650, 150, 300, 215, -2),
+    tape(668, 140, 80, -30, '#c8323a', 'plain'),
+    slot('polaroid', 975, 185, 190, 190, 5),
+    tape(1030, 172, 80, 4, '#3a5a9a', 'plain'),
+    eph('postmark', 650, 410, -8, d.postmark),
+    note(d.notes[0], 830, 430, 190, 3),
+    doodle('baguette', 640, 525, 56, -14),
+    slot('polaroid', 700, 560, 175, 175, -4),
+    doodle('wine', 920, 555, 130, 8),
+    eph('stamp', 1020, 600, 8, d.stamp),
+    pressed(f0, 1100, 420, 160, 10),
+    pressed(f1, 590, 640, 140, -12),
+    hand(d.notes[1], 900, 735, 240, -4, 30, 'La Belle Aurore', d.ink),
+  ];
+}
+
+const COMPOSE = { A: compA, B: compB, C: compC, N: compN, P: compP };
