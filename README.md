@@ -24,3 +24,12 @@ python3 tools/extract_botanicals.py --clean
 ```
 
 It reads every image in `sheets/`, keys out the green (soft edge, spill removal, no fringe), finds each specimen, crops it and saves `assets/botanicals/sheetN-1.png`, `sheetN-2.png`, … plus `assets/botanicals-contact-sheet.png` for checking and renaming. Run with `--help` for tuning options.
+
+## Printing a real book (Blurb)
+
+☰ → **Print as a book (Blurb PDF)…** makes two print-ready files for a Blurb *Standard Portrait 8 × 10 in softcover* photo book:
+
+- **Inside pages PDF**: single pages of 8.125 × 10.25 in at 300 dpi (8 × 10 trim + 0.125 in bleed on the top, bottom and outer edge, none at the binding). Page 1 is a right-hand title page, every two-page spread stays together, and blank pages are added so the book has an even count of at least 20 pages.
+- **Cover PDF**: back + spine + front in one file. Type the spine width and cover size from Blurb's book-size calculator for your page count and paper.
+
+Then upload both on Blurb via *PDF to Book*. Turn on **Show print guides** to see what the binding and trim will hide: keep text inside the dashed lines and out of the shaded middle.

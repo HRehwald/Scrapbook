@@ -602,3 +602,20 @@ textarea.text-input { resize: vertical; min-height: 70px; line-height: 1.3; }
 .kit-flowers { grid-template-columns: repeat(3, 56px); }
 .kit-select { margin: 0 0 8px; }
 .kit-chips { margin-bottom: 8px; }
+
+/* ------------------------------------------------------------ print dialog */
+.print-dialog { max-width: 560px; max-height: 90vh; overflow-y: auto; }
+.print-head { display: flex; align-items: center; justify-content: space-between; }
+.print-head h2 { margin: 0; }
+.print-format { font-family: var(--type); font-size: 13px; color: var(--ink-soft); margin: 4px 0 12px; }
+.print-summary { background: #fffdf7; border: 1px dashed var(--line); padding: 8px 12px; margin-bottom: 10px; }
+.print-summary p { margin: 4px 0; }
+.print-dialog h3 { font-family: var(--type); font-weight: normal; font-size: 14px; letter-spacing: 1px; text-transform: uppercase; color: var(--ink-soft); margin: 18px 0 8px; }
+.print-dialog .check { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.print-fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0 12px; }
+.print-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
+.text-input.num { font-size: 15px; padding: 5px 7px; }
+.print-progress { min-height: 1.4em; font-family: var(--type); font-size: 13px; color: var(--accent); }
+.print-steps { padding-left: 20px; line-height: 1.4; margin: 0 0 10px; }
+.print-dialog .btn.primary { align-self: flex-start; }
+@media (max-width: 560px) { .print-fields { grid-template-columns: 1fr; } }
